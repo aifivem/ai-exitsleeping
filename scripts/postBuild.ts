@@ -1,14 +1,18 @@
 import { existsSync } from "node:fs";
-import { cp, readFile, writeFile, access } from "node:fs/promises";
+import { cp, readFile, rm, writeFile, access } from "node:fs/promises";
 import fg from "fast-glob";
 import { dirname, extname } from "node:path";
 import type Package from "../package.json";
 import { setTimeout as sleep } from "node:timers/promises";
 
 /** `github:owner/repo`, `git+https://github.com/owner/repo.git` or `{ url }` -> `https://github.com/owner/repo`. */
-function repositoryUrl(value: string | { url?: string } | undefined): string | undefined {
+function repositoryUrl(
+  value: string | { url?: string } | undefined,
+): string | undefined {
   const raw = typeof value === "string" ? value : value?.url;
-  const match = raw?.match(/^(?:github:|(?:git\+)?https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  const match = raw?.match(
+    /^(?:github:|(?:git\+)?https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/,
+  );
   return match ? `https://github.com/${match[1]}` : undefined;
 }
 
@@ -93,6 +97,18 @@ function scripts(
 `;
 }
 
+/**
+ * The bridge uses ai-lib's Lua side, but ai-lib starts after ai-core (it depends on it), so ai-core carries a copy
+ * in `bridge/lib/` (committed, so ai-core works on its own). ai-lib stays the one source: the copy is refreshed from
+ * the sibling folder on every build.
+ */
+async function copyAiLib(): Promise<void> {
+  if (!existsSync("./bridge") || !existsSync("../ai-lib/init.lua")) return;
+  await rm("./bridge/lib", { recursive: true, force: true });
+  await cp("../ai-lib/lua", "./bridge/lib/lua", { recursive: true });
+  await cp("../ai-lib/init.lua", "./bridge/lib/init.lua");
+}
+
 let buildCount = 0;
 let fxmanifest = "";
 
@@ -101,6 +117,7 @@ export default async function () {
   const hasClient = existsSync("./resource/client/index.ts");
   const hasServer = existsSync("./resource/server/index.ts");
   if (++buildCount < Number(hasClient) + Number(hasServer)) return;
+  await copyAiLib();
 
   const {
     name,
