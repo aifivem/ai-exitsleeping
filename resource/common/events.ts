@@ -15,13 +15,13 @@ export const EVENTS = {
   remove: "ai-exitsleeping:client:remove",
   /** Callback: (charIds, up to MAX_LOOKS) -> (CharacterAppearance | null)[], the saved looks of sleepers the caller sees (fetched once per ped, batched). */
   look: "ai-exitsleeping:look",
-  /** Client -> server: (charId) pick up a sleeper lying on the ground. */
+  /** Action (ActionResult): (charId) pick up a sleeper lying on the ground. */
   startCarry: "ai-exitsleeping:startCarry",
   /** Client -> server: () put the carried sleeper down where the carrier stands. */
   stopCarry: "ai-exitsleeping:stopCarry",
-  /** Client -> server: (vehicleNetId, seat) seat the carried sleeper in a passenger seat. */
+  /** Action (ActionResult): (vehicleNetId, seat) seat the carried sleeper in a passenger seat. */
   putInVehicle: "ai-exitsleeping:putInVehicle",
-  /** Client -> server: (vehicleNetId) take a sleeper out of the vehicle (the taker carries it). */
+  /** Action (ActionResult): (vehicleNetId) take a sleeper out of the vehicle (the taker carries it). */
   takeOut: "ai-exitsleeping:takeOut",
 } as const;
 

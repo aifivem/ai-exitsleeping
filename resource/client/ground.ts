@@ -1,5 +1,6 @@
 import {
   cache,
+  callAction,
   LocalPed,
   Points,
   requestAnimDict,
@@ -35,7 +36,8 @@ class GroundPeds {
       icon: "up-down-left-right",
       radius: s.interactDistance,
       canShow: () => !carry.active && canCarry(),
-      onPressed: () => emitNet(EVENTS.startCarry, v.id),
+      onPressed: () =>
+        callAction(EVENTS.startCarry, [v.id], { fallback: "SLEEP_ERR_FAR" }),
     });
   }
 

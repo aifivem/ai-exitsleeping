@@ -3,5 +3,10 @@
   "STOP_CARRYING": "Bırak",
   "PUT_IN_VEHICLE": "Araca Koy",
   "TAKE_OUT_VEHICLE": "Uyuyan Oyuncuyu Çıkar",
-  "KEYBIND_DROP": "Taşıdığın uyuyan oyuncuyu yere bırak"
+  "KEYBIND_DROP": "Taşıdığın uyuyan oyuncuyu yere bırak",
+  "SLEEP_ERR_FAR": "Çok uzaktasın.",
+  "SLEEP_ERR_TAKEN": "Onu başka biri taşıyor.",
+  "SLEEP_ERR_BUSY": "Zaten birini taşıyorsun.",
+  "SLEEP_ERR_SEAT": "O koltuk dolu.",
+  "SLEEP_ERR_GONE": "Artık orada değil."
 }

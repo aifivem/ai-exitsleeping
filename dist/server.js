@@ -67,7 +67,10 @@ function readInt(value, min, max) {
 const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([value]) => {
 	let parsed = read(value);
 	return parsed === null ? null : [parsed];
-}, distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}, fail = (error) => ({
+	ok: !1,
+	error
+}), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 // ../../../packages/lib/src/shared/zone.ts
 function zoneContains(shape, x, y, z) {
 	switch (shape.type) {
@@ -1004,11 +1007,12 @@ var OnlinePlayers = class {
 const EMPTY$2 = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/vehicle.ts
-function vehicleFromNet(netId) {
+function entityFromNet(netId, type) {
 	if (readId(netId) === null) return 0;
 	let entity = NetworkGetEntityFromNetworkId(netId);
-	return entity && DoesEntityExist(entity) && GetEntityType(entity) === 2 ? entity : 0;
+	return !entity || !DoesEntityExist(entity) ? 0 : type === void 0 || GetEntityType(entity) === type ? entity : 0;
 }
+const vehicleFromNet = (netId) => entityFromNet(netId, 2);
 function vehicleNearPlayer(source, netId, options = {}) {
 	let vehicle = vehicleFromNet(netId);
 	if (!vehicle) return 0;
@@ -15556,8 +15560,9 @@ var ScheduledJob = class {
 	get front() {
 		return this.dues[this.head] ?? 0;
 	}
+	compactAt = 64;
 	push(job, due) {
-		this.count > this.mask && this.grow();
+		this.count >= this.compactAt && this.compact(), this.count > this.mask && this.grow();
 		let i = this.head + this.count & this.mask;
 		this.jobs[i] = job, this.gens[i] = job.gen, this.dues[i] = due, this.count++;
 	}
@@ -15570,6 +15575,17 @@ var ScheduledJob = class {
 			let next = due + this.interval;
 			next <= now && (next = now + this.interval), this.push(job, next), job.call();
 		}
+	}
+	compact() {
+		let kept = 0;
+		for (let n = 0; n < this.count; n++) {
+			let i = this.head + n & this.mask, job = this.jobs[i];
+			if (!job || job.gen !== this.gens[i]) continue;
+			let k = this.head + kept & this.mask;
+			this.jobs[k] = job, this.gens[k] = this.gens[i] ?? 0, this.dues[k] = this.dues[i] ?? 0, kept++;
+		}
+		for (let n = kept; n < this.count; n++) this.jobs[this.head + n & this.mask] = void 0;
+		this.count = kept, this.compactAt = Math.max(64, kept * 2);
 	}
 	grow() {
 		let size = (this.mask + 1) * 2, jobs = Array(size), gens = Array(size).fill(0), dues = Array(size).fill(0);
@@ -16498,19 +16514,23 @@ onClientCallback(EVENTS.look, {
 }, async (source, ids) => Promise.all(ids.map((id) => {
 	let s = sleepers.get(id);
 	return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
-}))), onClientEvent(EVENTS.startCarry, {
+})));
+const FAR = fail("SLEEP_ERR_FAR");
+onClientCallback(EVENTS.startCarry, {
 	args: oneArg(readId),
-	guards
+	guards,
+	lock: !0
 }, (source, id) => {
 	let s = sleepers.get(id);
-	if (!s || s.state !== "ground" || !s.cell || sleepers.carriedBy(source)) return;
+	if (!s || s.state !== "ground" || !s.cell) return fail("SLEEP_ERR_TAKEN");
+	if (sleepers.carriedBy(source)) return fail("SLEEP_ERR_BUSY");
 	let ped = worldPed(source);
-	ped && !GetVehiclePedIsIn(ped, !1) && (distance(pedCoords(ped), s) > content.settings.maxActionDistance || sleepers.setState(s, {
+	return !ped || GetVehiclePedIsIn(ped, !1) || distance(pedCoords(ped), s) > content.settings.maxActionDistance ? FAR : (sleepers.setState(s, {
 		state: "carried",
 		carrier: source,
 		net: 0,
 		seat: 0
-	}));
+	}), { ok: !0 });
 }), onClientEvent(EVENTS.stopCarry, (source) => {
 	let s = sleepers.carriedBy(source);
 	if (!s) return;
@@ -16521,43 +16541,45 @@ onClientCallback(EVENTS.look, {
 		net: 0,
 		seat: 0
 	}, ped ? pedCoords(ped) : void 0);
-}, { guards }), onClientEvent(EVENTS.putInVehicle, {
+}, { guards }), onClientCallback(EVENTS.putInVehicle, {
 	args: ([rawNet, rawSeat]) => {
 		let net = readId(rawNet), seat = readInt(rawSeat, 0, 15);
 		return net !== null && seat !== null ? [net, seat] : null;
 	},
-	guards
+	guards,
+	lock: !0
 }, (source, net, seat) => {
 	let s = sleepers.carriedBy(source);
-	if (!s) return;
+	if (!s) return fail("SLEEP_ERR_GONE");
 	let veh = vehicleNear(source, net);
-	if (veh && GetEntityRoutingBucket(veh) === 0 && GetPedInVehicleSeat(veh, seat) === 0) {
-		for (let other of sleepers.movingBodies()) if (other.state === "vehicle" && other.net === net && other.seat === seat) return;
-		sleepers.setState(s, {
-			state: "vehicle",
-			carrier: 0,
-			net,
-			seat
-		}, pedCoords(veh));
-	}
-}), onClientEvent(EVENTS.takeOut, {
+	if (!veh || GetEntityRoutingBucket(veh) !== 0) return FAR;
+	if (GetPedInVehicleSeat(veh, seat) !== 0) return fail("SLEEP_ERR_SEAT");
+	for (let other of sleepers.movingBodies()) if (other.state === "vehicle" && other.net === net && other.seat === seat) return fail("SLEEP_ERR_SEAT");
+	return sleepers.setState(s, {
+		state: "vehicle",
+		carrier: 0,
+		net,
+		seat
+	}, pedCoords(veh)), { ok: !0 };
+}), onClientCallback(EVENTS.takeOut, {
 	args: oneArg(readId),
-	guards
+	guards,
+	lock: !0
 }, (source, net) => {
-	if (sleepers.carriedBy(source)) return;
+	if (sleepers.carriedBy(source)) return fail("SLEEP_ERR_BUSY");
 	let s;
 	for (let other of sleepers.movingBodies()) if (other.state === "vehicle" && other.net === net) {
 		s = other;
 		break;
 	}
-	if (!s) return;
+	if (!s) return fail("SLEEP_ERR_GONE");
 	let veh = vehicleNear(source, net);
-	veh && GetEntityRoutingBucket(veh) === 0 && sleepers.setState(s, {
+	return !veh || GetEntityRoutingBucket(veh) !== 0 ? FAR : (sleepers.setState(s, {
 		state: "carried",
 		carrier: source,
 		net: 0,
 		seat: 0
-	}, pedCoords(veh));
+	}, pedCoords(veh)), { ok: !0 });
 });
 // resource/server/create.ts
 const checks = new Map();

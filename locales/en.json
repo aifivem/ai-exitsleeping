@@ -5,7 +5,6 @@
   "TAKE_OUT_VEHICLE": "Take Out Sleeping Player",
   "KEYBIND_DROP": "Put down the sleeping player you carry",
   "COMMAND_TEST_HELP": "Toggle your own sleeping body (test)",
-
   "ADMIN_TITLE": "Exit Sleeping",
   "ADMIN_TAB_GENERAL": "General",
   "ADMIN_TAB_GENERAL_DESC": "How long sleeping bodies stay, how far they are drawn and what players can do with them.",
@@ -31,7 +30,6 @@
   "ADMIN_H_TRACK": "How often the server updates where carried bodies and bodies in vehicles are, so the owner wakes up at the right place.",
   "ADMIN_F_DEBUG": "Debug messages",
   "ADMIN_H_DEBUG": "Prints what the script does to the server and client consoles.",
-
   "ADMIN_TAB_ANIMS": "Animations",
   "ADMIN_TAB_ANIMS_DESC": "The lying poses of sleeping bodies and the carry animation.",
   "ADMIN_C_SLEEP_ANIMS": "Lying poses",
@@ -58,7 +56,6 @@
   "ADMIN_F_ROT_X": "Rotation X",
   "ADMIN_F_ROT_Y": "Rotation Y",
   "ADMIN_F_ROT_Z": "Rotation Z",
-
   "ADMIN_TAB_AREAS": "Hidden areas",
   "ADMIN_TAB_AREAS_DESC": "Places where no sleeping body is shown, such as interiors or safe zones.",
   "ADMIN_NEW_AREA": "New area",
@@ -82,5 +79,10 @@
   "ADMIN_C_CORNERS": "Polygon corners",
   "ADMIN_C_CORNERS_DESC": "Add a corner at each turn of the border, in order (free camera or your position); a polygon needs at least three.",
   "ADMIN_F_CORNERS": "Corners",
-  "ADMIN_H_CORNERS": "The shape is drawn in the world while this field is on screen; the height above sets how far up and down it reaches."
+  "ADMIN_H_CORNERS": "The shape is drawn in the world while this field is on screen; the height above sets how far up and down it reaches.",
+  "SLEEP_ERR_FAR": "Too far away.",
+  "SLEEP_ERR_TAKEN": "Someone else already has them.",
+  "SLEEP_ERR_BUSY": "You are already carrying someone.",
+  "SLEEP_ERR_SEAT": "That seat is taken.",
+  "SLEEP_ERR_GONE": "They are not there any more."
 }

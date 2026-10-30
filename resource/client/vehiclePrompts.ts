@@ -1,4 +1,4 @@
-import { cache, Points } from "@aicore-fivem/lib/client";
+import { cache, callAction, Points } from "@aicore-fivem/lib/client";
 import { Locale } from "common";
 import { EVENTS } from "common/events";
 import { carry } from "./carry";
@@ -52,13 +52,13 @@ class VehiclePrompts {
         cache.vehicle === false &&
         vehicle !== 0 &&
         freeSeat(vehicle) !== null,
-      onPressed: (vehicle) => {
+      onPressed: async (vehicle) => {
         const seat = freeSeat(vehicle);
         if (seat !== null)
-          emitNet(
+          await callAction(
             EVENTS.putInVehicle,
-            NetworkGetNetworkIdFromEntity(vehicle),
-            seat,
+            [NetworkGetNetworkIdFromEntity(vehicle), seat],
+            { fallback: "SLEEP_ERR_FAR" },
           );
       },
     });
@@ -72,7 +72,9 @@ class VehiclePrompts {
         vehicle !== 0 &&
         view.inVehicles.has(NetworkGetNetworkIdFromEntity(vehicle)),
       onPressed: (vehicle) =>
-        emitNet(EVENTS.takeOut, NetworkGetNetworkIdFromEntity(vehicle)),
+        callAction(EVENTS.takeOut, [NetworkGetNetworkIdFromEntity(vehicle)], {
+          fallback: "SLEEP_ERR_FAR",
+        }),
     });
   }
 }
