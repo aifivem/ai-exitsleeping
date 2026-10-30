@@ -7,7 +7,15 @@ import {
 } from "@aicore-fivem/lib/server";
 import { Locale, ResourceName } from "common";
 import "./actions";
-import { content, core, livePed, log, panel, pedCoords } from "./content";
+import {
+  content,
+  core,
+  livePed,
+  log,
+  panel,
+  pedCoords,
+  worldPed,
+} from "./content";
 import { createSleeping } from "./create";
 import { sleepers } from "./store";
 import "./wake";
@@ -16,7 +24,7 @@ import "./wake";
 function onLeft(source: number, charId: number): void {
   const carried = sleepers.carriedBy(source);
   if (carried) {
-    const ped = livePed(source);
+    const ped = worldPed(source);
     sleepers.setState(
       carried,
       { state: "ground", carrier: 0, net: 0, seat: 0 },
@@ -41,6 +49,8 @@ function trackMoving(): void {
       sleepers.setState(s, { state: "ground", carrier: 0, net: 0, seat: 0 });
       continue;
     }
+    // Inside an instance the body keeps its last shared-world position (where it is put down if it ends there).
+    if (GetEntityRoutingBucket(entity) !== 0) continue;
     const c = pedCoords(entity);
     if (Math.hypot(c.x - s.x, c.y - s.y, c.z - s.z) > 1) sleepers.move(s, c);
   }

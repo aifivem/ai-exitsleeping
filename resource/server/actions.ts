@@ -5,8 +5,8 @@ import {
   vehicleNearPlayer,
 } from "@aicore-fivem/lib/server";
 import { distance, oneArg, readId, readInt } from "@aicore-fivem/lib/shared";
-import { cellOf, EVENTS } from "common/events";
-import { content, livePed, pedCoords } from "./content";
+import { cellOf, EVENTS, MAX_LOOKS } from "common/events";
+import { content, livePed, pedCoords, worldPed } from "./content";
 import { looks } from "./looks";
 import { sleepers } from "./store";
 
@@ -47,13 +47,24 @@ onClientEvent(
   },
 );
 
+/** 1 to MAX_LOOKS body ids. */
+function readIds(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_LOOKS)
+    return null;
+  const ids = value.map(readId);
+  return ids.every((id): id is number => id !== null) ? ids : null;
+}
+
 onClientCallback(
   EVENTS.look,
-  { args: oneArg(readId), guards },
-  async (source, id) => {
-    const s = sleepers.get(id);
-    return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
-  },
+  { args: oneArg(readIds), guards, rate: { count: 5, windowMs: 1000 } },
+  async (source, ids) =>
+    Promise.all(
+      ids.map((id) => {
+        const s = sleepers.get(id);
+        return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
+      }),
+    ),
 );
 
 onClientEvent(
@@ -63,7 +74,7 @@ onClientEvent(
     const s = sleepers.get(id);
     if (!s || s.state !== "ground" || !s.cell) return;
     if (sleepers.carriedBy(source)) return;
-    const ped = livePed(source);
+    const ped = worldPed(source);
     if (!ped || GetVehiclePedIsIn(ped, false)) return;
     if (distance(pedCoords(ped), s) > content.settings.maxActionDistance)
       return;
@@ -81,7 +92,7 @@ onClientEvent(
   (source) => {
     const s = sleepers.carriedBy(source);
     if (!s) return;
-    const ped = livePed(source);
+    const ped = worldPed(source);
     sleepers.setState(
       s,
       { state: "ground", carrier: 0, net: 0, seat: 0 },
@@ -105,7 +116,8 @@ onClientEvent(
     const s = sleepers.carriedBy(source);
     if (!s) return;
     const veh = vehicleNear(source, net);
-    if (!veh || GetPedInVehicleSeat(veh, seat) !== 0) return;
+    if (!veh || GetEntityRoutingBucket(veh) !== 0) return;
+    if (GetPedInVehicleSeat(veh, seat) !== 0) return;
     // Sleeping peds are local on every client: the server sees them only in its own records.
     for (const other of sleepers.movingBodies())
       if (other.state === "vehicle" && other.net === net && other.seat === seat)
@@ -131,7 +143,7 @@ onClientEvent(
       }
     if (!s) return;
     const veh = vehicleNear(source, net);
-    if (!veh) return;
+    if (!veh || GetEntityRoutingBucket(veh) !== 0) return;
     // Taking out starts carrying at once.
     sleepers.setState(
       s,

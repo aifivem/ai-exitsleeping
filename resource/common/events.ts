@@ -13,7 +13,7 @@ export const EVENTS = {
   put: "ai-exitsleeping:client:put",
   /** Server -> players watching the cell: (charId) a sleeper woke, expired or left the cell. */
   remove: "ai-exitsleeping:client:remove",
-  /** Callback: (charId) -> CharacterAppearance | null, the saved look of a sleeper the caller sees (fetched once per ped). */
+  /** Callback: (charIds, up to MAX_LOOKS) -> (CharacterAppearance | null)[], the saved looks of sleepers the caller sees (fetched once per ped, batched). */
   look: "ai-exitsleeping:look",
   /** Client -> server: (charId) pick up a sleeper lying on the ground. */
   startCarry: "ai-exitsleeping:startCarry",
@@ -105,3 +105,6 @@ export function toView(v: unknown): SleeperView | null {
     seat,
   };
 }
+
+/** Ids per look call. */
+export const MAX_LOOKS = 20;

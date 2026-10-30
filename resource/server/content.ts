@@ -37,3 +37,12 @@ export function livePed(source: number): number {
   const ped = GetPlayerPed(String(source));
   return ped && DoesEntityExist(ped) ? ped : 0;
 }
+
+/**
+ * The player's ped while it stands in the shared world (routing bucket 0), else 0: bodies live only there, so a
+ * carrier inside an instanced interior (a house, a robbery) never moves or drops one at interior coordinates.
+ */
+export function worldPed(source: number): number {
+  const ped = livePed(source);
+  return ped && GetPlayerRoutingBucket(String(source)) === 0 ? ped : 0;
+}

@@ -283,6 +283,8 @@ const CORE = {
 	dutyChangedEvent: "ai-core:dutyChanged",
 	gangsChangedEvent: "ai-core:gangsChanged",
 	activeGangChangedEvent: "ai-core:activeGangChanged",
+	metaChangedEvent: "ai-core:metaChanged",
+	definitionsChangedEvent: "ai-core:definitionsChanged",
 	characterScreenEvent: "ai-core:characterScreen",
 	inventoryChangedEvent: "ai-core:inventoryChanged",
 	itemUsedEvent: "ai-core:itemUsed",
@@ -294,6 +296,9 @@ const CORE = {
 	clientPromptPressedEvent: "ai-core:client:promptPressed",
 	clientCacheEvent: "ai-core:client:cache",
 	clientHudVisibleEvent: "ai-core:client:hudVisible",
+	clientWorldSyncEvent: "ai-core:client:worldSync",
+	clientCancelProgressEvent: "ai-core:client:cancelProgress",
+	clientDefinitionsEvent: "ai-core:client:definitions",
 	vehicleTypeCallback: "ai-core:vehicleType",
 	interactionStateKey: "ai:interaction",
 	charactersCallback: "ai-core:characters",
@@ -764,7 +769,10 @@ var AdminPanel = class {
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges)), setImmediate(() => core$14.RegisterAdminPanel(this.resource));
+		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+			count: 4,
+			windowMs: 1e4
+		} }), setImmediate(() => core$14.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -16137,6 +16145,10 @@ function livePed(source) {
 	let ped = GetPlayerPed(String(source));
 	return ped && DoesEntityExist(ped) ? ped : 0;
 }
+function worldPed(source) {
+	let ped = livePed(source);
+	return ped && GetPlayerRoutingBucket(String(source)) === 0 ? ped : 0;
+}
 // resource/server/looks.ts
 const looks = new class {
 	cache = new Map();
@@ -16470,19 +16482,29 @@ onClientEvent(EVENTS.area, {
 	if (!ped) return;
 	let p = pedCoords(ped), real = cellOf(p.x, p.y);
 	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || sleepers.watch(source, cx, cy);
-}), onClientCallback(EVENTS.look, {
-	args: oneArg(readId),
-	guards
-}, async (source, id) => {
+});
+function readIds(value) {
+	if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
+	let ids = value.map(readId);
+	return ids.every((id) => id !== null) ? ids : null;
+}
+onClientCallback(EVENTS.look, {
+	args: oneArg(readIds),
+	guards,
+	rate: {
+		count: 5,
+		windowMs: 1e3
+	}
+}, async (source, ids) => Promise.all(ids.map((id) => {
 	let s = sleepers.get(id);
 	return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
-}), onClientEvent(EVENTS.startCarry, {
+}))), onClientEvent(EVENTS.startCarry, {
 	args: oneArg(readId),
 	guards
 }, (source, id) => {
 	let s = sleepers.get(id);
 	if (!s || s.state !== "ground" || !s.cell || sleepers.carriedBy(source)) return;
-	let ped = livePed(source);
+	let ped = worldPed(source);
 	ped && !GetVehiclePedIsIn(ped, !1) && (distance(pedCoords(ped), s) > content.settings.maxActionDistance || sleepers.setState(s, {
 		state: "carried",
 		carrier: source,
@@ -16492,7 +16514,7 @@ onClientEvent(EVENTS.area, {
 }), onClientEvent(EVENTS.stopCarry, (source) => {
 	let s = sleepers.carriedBy(source);
 	if (!s) return;
-	let ped = livePed(source);
+	let ped = worldPed(source);
 	sleepers.setState(s, {
 		state: "ground",
 		carrier: 0,
@@ -16509,7 +16531,7 @@ onClientEvent(EVENTS.area, {
 	let s = sleepers.carriedBy(source);
 	if (!s) return;
 	let veh = vehicleNear(source, net);
-	if (veh && GetPedInVehicleSeat(veh, seat) === 0) {
+	if (veh && GetEntityRoutingBucket(veh) === 0 && GetPedInVehicleSeat(veh, seat) === 0) {
 		for (let other of sleepers.movingBodies()) if (other.state === "vehicle" && other.net === net && other.seat === seat) return;
 		sleepers.setState(s, {
 			state: "vehicle",
@@ -16530,7 +16552,7 @@ onClientEvent(EVENTS.area, {
 	}
 	if (!s) return;
 	let veh = vehicleNear(source, net);
-	veh && sleepers.setState(s, {
+	veh && GetEntityRoutingBucket(veh) === 0 && sleepers.setState(s, {
 		state: "carried",
 		carrier: source,
 		net: 0,
@@ -16600,7 +16622,7 @@ onClientCallback(EVENTS.wake, (source) => wake(source), {
 function onLeft(source, charId) {
 	let carried = sleepers.carriedBy(source);
 	if (carried) {
-		let ped = livePed(source);
+		let ped = worldPed(source);
 		sleepers.setState(carried, {
 			state: "ground",
 			carrier: 0,
@@ -16623,6 +16645,7 @@ function trackMoving() {
 			});
 			continue;
 		}
+		if (GetEntityRoutingBucket(entity) !== 0) continue;
 		let c = pedCoords(entity);
 		Math.hypot(c.x - s.x, c.y - s.y, c.z - s.z) > 1 && sleepers.move(s, c);
 	}
