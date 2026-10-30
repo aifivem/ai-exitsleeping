@@ -2,8 +2,9 @@ import {
   hasCharacter,
   onClientCallback,
   onClientEvent,
+  vehicleNearPlayer,
 } from "@aicore-fivem/lib/server";
-import { asArgs } from "@aicore-fivem/lib/shared";
+import { distance, oneArg, readId, readInt } from "@aicore-fivem/lib/shared";
 import { cellOf, EVENTS } from "common/events";
 import { content, livePed, pedCoords } from "./content";
 import { looks } from "./looks";
@@ -12,31 +13,21 @@ import { sleepers } from "./store";
 /** Client actions on sleeping bodies; every one is checked here (state, distance, seat) before memory changes. */
 
 const guards = [hasCharacter()];
-const isId = (v: unknown): v is number => Number.isInteger(v) && Number(v) > 0;
-const dist = (
-  a: { x: number; y: number; z: number },
-  b: { x: number; y: number; z: number },
-) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
-/** A networked vehicle the player stands next to, else 0. */
-function vehicleNear(source: number, net: number): number {
-  const veh = NetworkGetEntityFromNetworkId(net);
-  if (!veh || !DoesEntityExist(veh) || GetEntityType(veh) !== 2) return 0;
-  const ped = livePed(source);
-  if (!ped) return 0;
-  return dist(pedCoords(ped), pedCoords(veh)) <=
-    content.settings.maxActionDistance + 2
-    ? veh
-    : 0;
-}
+/** A networked vehicle the player stands next to (a body reaches the vehicle side), else 0. */
+const vehicleNear = (source: number, net: number): number =>
+  vehicleNearPlayer(source, net, {
+    metres: content.settings.maxActionDistance + 2,
+  });
 
 onClientEvent(
   EVENTS.area,
   {
-    args: ([cx, cy]): [number, number] | null =>
-      Number.isInteger(cx) && Number.isInteger(cy)
-        ? [Number(cx), Number(cy)]
-        : null,
+    args: ([rawX, rawY]): [number, number] | null => {
+      const cx = readInt(rawX, -1000, 1000);
+      const cy = readInt(rawY, -1000, 1000);
+      return cx !== null && cy !== null ? [cx, cy] : null;
+    },
     rate: { count: 2, windowMs: 1000 },
     guards,
   },
@@ -58,25 +49,24 @@ onClientEvent(
 
 onClientCallback(
   EVENTS.look,
-  { args: ([id]) => asArgs(isId(id) ? id : null), guards },
+  { args: oneArg(readId), guards },
   async (source, id) => {
     const s = sleepers.get(id);
-    if (!s || !sleepers.visibleTo(s, source)) return { ok: false };
-    const look = await looks.get(id);
-    return { ok: true, look: look?.data ?? null };
+    return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
   },
 );
 
 onClientEvent(
   EVENTS.startCarry,
-  { args: ([id]) => asArgs(isId(id) ? id : null), guards },
+  { args: oneArg(readId), guards },
   (source, id) => {
     const s = sleepers.get(id);
     if (!s || s.state !== "ground" || !s.cell) return;
     if (sleepers.carriedBy(source)) return;
     const ped = livePed(source);
     if (!ped || GetVehiclePedIsIn(ped, false)) return;
-    if (dist(pedCoords(ped), s) > content.settings.maxActionDistance) return;
+    if (distance(pedCoords(ped), s) > content.settings.maxActionDistance)
+      return;
     sleepers.setState(s, {
       state: "carried",
       carrier: source,
@@ -104,13 +94,11 @@ onClientEvent(
 onClientEvent(
   EVENTS.putInVehicle,
   {
-    args: ([net, seat]): [number, number] | null =>
-      isId(net) &&
-      Number.isInteger(seat) &&
-      Number(seat) >= 0 &&
-      Number(seat) < 16
-        ? [Number(net), Number(seat)]
-        : null,
+    args: ([rawNet, rawSeat]): [number, number] | null => {
+      const net = readId(rawNet);
+      const seat = readInt(rawSeat, 0, 15);
+      return net !== null && seat !== null ? [net, seat] : null;
+    },
     guards,
   },
   (source, net, seat) => {
@@ -132,7 +120,7 @@ onClientEvent(
 
 onClientEvent(
   EVENTS.takeOut,
-  { args: ([net]) => asArgs(isId(net) ? Number(net) : null), guards },
+  { args: oneArg(readId), guards },
   (source, net) => {
     if (sleepers.carriedBy(source)) return;
     let s;

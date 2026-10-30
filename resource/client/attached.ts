@@ -1,22 +1,25 @@
-import { cache, requestAnimDict, requestModel } from "@aicore-fivem/lib/client";
+import { cache, LocalPed, requestAnimDict } from "@aicore-fivem/lib/client";
 import { HOOKS, type SleeperView } from "common/events";
 import { looks } from "./looks";
 import { hidden } from "./rules";
 import { content, debug } from "./settings";
 
+/**
+ * A `LocalPed` spawns when the player enters a sphere around a fixed point. A carried / seated body moves with its
+ * parent, so the sphere is made larger than the map and the 500 ms check below decides when the ped exists.
+ */
+const ANYWHERE = 100_000;
+
 interface Entry {
   view: SleeperView;
-  ped: number;
-  busy: boolean;
-  /** The model could not be loaded: never tried again for this body. */
-  broken: boolean;
+  ped: LocalPed | null;
 }
 
 /**
- * Bodies that are carried or seated: a local ped attached to the carrier or put into the vehicle seat on this
- * client. lib `LocalPed` only stands still at a point, so these are created here; a 500 ms check (running only
- * while such bodies exist) creates the ped once its carrier / vehicle streams in near the player, and recreates it
- * when the attachment or seat was lost (model swap of the carrier, vehicle repair scripts).
+ * Bodies that are carried or seated: a lib `LocalPed` attached to the carrier or put into the vehicle seat on this
+ * client. A 500 ms check (running only while such bodies exist) creates the ped once its carrier / vehicle is within
+ * the spawn distance, removes it past that, and makes it again when the attachment or seat was lost (model swap of
+ * the carrier, vehicle repair scripts).
  */
 class AttachedPeds {
   private readonly entries = new Map<number, Entry>();
@@ -24,7 +27,7 @@ class AttachedPeds {
 
   add(view: SleeperView): void {
     this.remove(view.id);
-    this.entries.set(view.id, { view, ped: 0, busy: false, broken: false });
+    this.entries.set(view.id, { view, ped: null });
     this.timer ??= setInterval(() => this.check(), 500);
     this.check();
   }
@@ -47,7 +50,6 @@ class AttachedPeds {
   private check(): void {
     const [x = 0, y = 0, z = 0] = GetEntityCoords(cache.ped, false);
     for (const entry of this.entries.values()) {
-      if (entry.busy || entry.broken) continue;
       const parent = this.parentOf(entry.view);
       let near = false;
       if (parent && !hidden.any) {
@@ -55,11 +57,16 @@ class AttachedPeds {
         near =
           Math.hypot(px - x, py - y, pz - z) < content.settings.spawnDistance;
       }
-      const alive = entry.ped !== 0 && DoesEntityExist(entry.ped);
-      if (near && parent && (!alive || !this.bound(entry, parent))) {
+      if (!near) {
         this.despawn(entry);
-        void this.spawn(entry, parent);
-      } else if (!near && entry.ped) this.despawn(entry);
+        continue;
+      }
+      // A ped still loading (entity 0) is left alone; one that lost its parent is made again.
+      const ped = entry.ped?.entity ?? 0;
+      if (!entry.ped || (ped && !this.bound(entry.view, ped, parent))) {
+        this.despawn(entry);
+        this.spawn(entry);
+      }
     }
   }
 
@@ -75,61 +82,41 @@ class AttachedPeds {
     return veh && DoesEntityExist(veh) ? veh : 0;
   }
 
-  private bound(entry: Entry, parent: number): boolean {
-    return entry.view.state === "carried"
-      ? IsEntityAttachedToEntity(entry.ped, parent)
-      : GetPedInVehicleSeat(parent, entry.view.seat) === entry.ped;
+  private bound(v: SleeperView, ped: number, parent: number): boolean {
+    if (!DoesEntityExist(ped)) return false;
+    return v.state === "carried"
+      ? IsEntityAttachedToEntity(ped, parent)
+      : GetPedInVehicleSeat(parent, v.seat) === ped;
   }
 
-  private async spawn(entry: Entry, parent: number): Promise<void> {
-    entry.busy = true;
+  private spawn(entry: Entry): void {
     const v = entry.view;
-    try {
-      const hash = await requestModel(v.model).catch(() => 0);
-      if (!hash) {
-        entry.broken = true;
-        return debug("invalid ped model", v.model, v.id);
-      }
+    const a = content.settings.attach;
+    const parent = () => this.parentOf(v);
+    entry.ped = new LocalPed({
+      model: v.model,
+      coords: { x: v.x, y: v.y, z: v.z, heading: v.heading },
+      distance: ANYWHERE,
+      ...(v.state === "carried"
+        ? {
+            attach: {
+              entity: parent,
+              bone: a.bone,
+              offset: { x: a.x, y: a.y, z: a.z },
+              rotation: { x: a.rx, y: a.ry, z: a.rz },
+            },
+          }
+        : { seat: { vehicle: parent, seat: v.seat } }),
+      onSpawn: (ped) => void this.dress(ped, v),
+    });
+  }
+
+  private async dress(ped: number, v: SleeperView): Promise<void> {
+    SetEntityAsMissionEntity(ped, true, true);
+    if (v.state === "carried") {
       const carried = content.settings.carried;
-      if (v.state === "carried")
-        await requestAnimDict(carried.dict).catch(() => undefined);
-      // The body may have changed state or left while the model loaded.
-      if (this.entries.get(v.id) !== entry || !DoesEntityExist(parent)) return;
-      const ped = CreatePed(
-        4,
-        hash,
-        v.x,
-        v.y,
-        v.z - 1,
-        v.heading,
-        false,
-        false,
-      );
-      SetModelAsNoLongerNeeded(hash);
-      if (!ped) return;
-      entry.ped = ped;
-      SetEntityAsMissionEntity(ped, true, true);
-      SetEntityInvincible(ped, true);
-      SetBlockingOfNonTemporaryEvents(ped, true);
-      if (v.state === "carried") {
-        const a = content.settings.attach;
-        AttachEntityToEntity(
-          ped,
-          parent,
-          a.bone,
-          a.x,
-          a.y,
-          a.z,
-          a.rx,
-          a.ry,
-          a.rz,
-          false,
-          false,
-          false,
-          false,
-          2,
-          false,
-        );
+      await requestAnimDict(carried.dict).catch(() => undefined);
+      if (DoesEntityExist(ped))
         TaskPlayAnim(
           ped,
           carried.dict,
@@ -143,18 +130,16 @@ class AttachedPeds {
           false,
           false,
         );
-      } else SetPedIntoVehicle(ped, parent, v.seat);
-      await looks.apply(ped, v.id);
-      if (DoesEntityExist(ped)) emit(HOOKS.pedSpawned, ped, v);
-      debug("spawned ped", v.id, v.state);
-    } finally {
-      entry.busy = false;
     }
+    await looks.apply(ped, v.id);
+    if (!DoesEntityExist(ped)) return;
+    emit(HOOKS.pedSpawned, ped, v);
+    debug("spawned ped", v.id, v.state);
   }
 
   private despawn(entry: Entry): void {
-    if (entry.ped && DoesEntityExist(entry.ped)) DeleteEntity(entry.ped);
-    entry.ped = 0;
+    entry.ped?.remove();
+    entry.ped = null;
   }
 }
 

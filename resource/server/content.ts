@@ -1,7 +1,7 @@
 import { AdminPanel, resourceExport } from "@aicore-fivem/lib/server";
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { createLogger, type ZoneShape } from "@aicore-fivem/lib/shared";
 import { ResourceName } from "common";
-import { readAreas, type HiddenArea } from "common/areas";
+import { readArea } from "common/areas";
 import { readSettings, type Settings } from "common/settings";
 import { exitSleepingSchema } from "./schema";
 
@@ -9,17 +9,18 @@ export const core = resourceExport("ai-core");
 export const log = createLogger(ResourceName);
 export const panel = new AdminPanel(exitSleepingSchema);
 
-/** Panel content, parsed again after every change. */
-export const content: { settings: Settings; areas: HiddenArea[] } = {
-  settings: readSettings(panel.get("settings")),
-  areas: readAreas(panel.get("areas")),
+const settings = panel.view("settings", readSettings);
+
+/** Panel content: settings parsed again on each change, hidden areas per changed record. */
+export const content: {
+  readonly settings: Settings;
+  readonly areas: ReadonlyMap<string, ZoneShape>;
+} = {
+  get settings() {
+    return settings.value;
+  },
+  areas: panel.records("areas", readArea),
 };
-panel.onChange(
-  "settings",
-  () => (content.settings = readSettings(panel.get("settings"))),
-);
-// A polygon with fewer than three corners is skipped by readAreas (the admin adds corners after picking the shape).
-panel.onChange("areas", () => (content.areas = readAreas(panel.get("areas"))));
 
 /** A debug line while the panel's debug switch is on. */
 export const debug = (message: string, ...args: unknown[]) => {

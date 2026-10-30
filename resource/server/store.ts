@@ -1,4 +1,4 @@
-import { WriteQueue } from "@aicore-fivem/lib/server";
+import { characters, WriteQueue } from "@aicore-fivem/lib/server";
 import { waitFor } from "@aicore-fivem/lib/shared";
 import { inAnyArea } from "common/areas";
 import { cellKey, cellOf, EVENTS, HOOKS } from "common/events";
@@ -6,7 +6,7 @@ import { content, debug, log } from "./content";
 import * as repo from "./db";
 import { CellIndex } from "./cells";
 import { looks } from "./looks";
-import { Sleeper, type Coords } from "./sleeper";
+import { modelHash, Sleeper, type Coords } from "./sleeper";
 import { AreaStream } from "./stream";
 import { Watchers } from "./watchers";
 
@@ -40,7 +40,7 @@ class Sleepers {
     await repo.loadAll((row) => {
       const s = new Sleeper(
         row.char_id,
-        row.model,
+        modelHash(row.model),
         row.anim,
         row.x,
         row.y,
@@ -84,7 +84,7 @@ class Sleepers {
     this.writes.push(`insert ${s.charId}`, () =>
       repo.insertSleeper({
         char_id: s.charId,
-        model: s.model,
+        model: String(s.model),
         anim: s.anim,
         x: s.x,
         y: s.y,
@@ -125,6 +125,8 @@ class Sleepers {
     this.track(s, s.moving);
     if (coords) this.setCoords(s, coords);
     this.place(s, before);
+    // Put down (or dropped by a vanished carrier / vehicle): the owner spawns here next time.
+    if (!s.moving) this.saveSpawn(s);
     debug("state", s.charId, s.state);
   }
 
@@ -153,6 +155,8 @@ class Sleepers {
   /** Writes the positions changed since the last flush in one statement per 500. */
   flush(): Promise<void> {
     if (this.dirty.size === 0) return this.writes.idle();
+    // Carried / seated bodies move the spawn point once per flush; ground ones were saved when put down.
+    for (const s of this.dirty) if (s.moving) this.saveSpawn(s);
     const rows = [...this.dirty].map((s) => ({
       char_id: s.charId,
       x: s.x,
@@ -175,6 +179,11 @@ class Sleepers {
     this.stream.unwatch(source, tell);
   }
 
+  /** The owner's spawn point follows the body (ai-core writes it once no save holds the character). */
+  private saveSpawn(s: Sleeper): void {
+    characters.setOfflinePosition(s.charId, s.coords);
+  }
+
   private setCoords(s: Sleeper, c: Coords): void {
     s.x = c.x;
     s.y = c.y;
@@ -185,7 +194,8 @@ class Sleepers {
   }
 
   private wantedCell(s: Sleeper): string {
-    if (!s.moving && inAnyArea(content.areas, s.x, s.y, s.z)) return "";
+    if (!s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z))
+      return "";
     const { cx, cy } = cellOf(s.x, s.y);
     return cellKey(cx, cy);
   }

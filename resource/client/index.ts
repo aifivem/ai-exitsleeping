@@ -1,11 +1,10 @@
 import {
   onCache,
-  player,
   registerExport,
   resourceExport,
   triggerServerCallback,
 } from "@aicore-fivem/lib/client";
-import { createLogger, isRecord } from "@aicore-fivem/lib/shared";
+import { createLogger } from "@aicore-fivem/lib/shared";
 import { CORE } from "@aicore-fivem/shared";
 import { ResourceName } from "common";
 import { EVENTS, type SleeperView } from "common/events";
@@ -35,6 +34,11 @@ function rebuild(): void {
   for (const v of view.records.values()) render(v);
 }
 
+onSettings(() => {
+  rebuild();
+  vehiclePrompts.reset();
+});
+
 view.listen({
   put: (v) => {
     render(v);
@@ -54,7 +58,6 @@ carry.onChange(() => {
 });
 hidden.onChange(rebuild);
 onCarryRules(() => ground.refreshPoints());
-onSettings(rebuild);
 onCache("vehicle", () => {
   ground.refreshCollision();
   ground.refreshPoints();
@@ -62,30 +65,16 @@ onCache("vehicle", () => {
 
 let started = false;
 
-/** Wakes this player's own body (stand where it ended up), then starts receiving the bodies around. */
+/**
+ * Wakes this player's own body (ai-core spawned the character where it ended up; the server seats / moves the player
+ * when it was in a vehicle or carried), then starts receiving the bodies around.
+ */
 async function start(): Promise<void> {
   if (started) return;
   started = true;
-  const answer = await triggerServerCallback(EVENTS.wake, [], 30_000).catch(
-    (error: unknown) => {
-      log.error("waking failed", error);
-      return null;
-    },
+  await triggerServerCallback(EVENTS.wake, [], 30_000).catch((error: unknown) =>
+    log.error("waking failed", error),
   );
-  const coords =
-    isRecord(answer) && isRecord(answer.coords) ? answer.coords : null;
-  if (
-    coords &&
-    typeof coords.x === "number" &&
-    typeof coords.y === "number" &&
-    typeof coords.z === "number" &&
-    typeof coords.heading === "number" &&
-    player.distanceTo({ x: coords.x, y: coords.y, z: coords.z }) > 2
-  )
-    await player.teleport(
-      { x: coords.x, y: coords.y, z: coords.z },
-      { heading: coords.heading, ground: false },
-    );
   view.start();
 }
 

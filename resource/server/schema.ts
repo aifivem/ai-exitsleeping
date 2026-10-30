@@ -134,7 +134,7 @@ export const exitSleepingSchema: PanelSchema = {
         center: { x: 0, y: 0, z: 0 },
         radius: 25,
         height: 10,
-        points: [],
+        corners: [],
       },
       sections: {
         label: { type: "text", min: 1, max: 48 },
@@ -142,11 +142,8 @@ export const exitSleepingSchema: PanelSchema = {
         center: { type: "vec3" },
         radius: range(1, 2000),
         height: range(0.5, 1000),
-        points: {
-          type: "list",
-          max: 64,
-          of: { type: "object", fields: { coords: { type: "vec3" } } },
-        },
+        // No `min: 3`: ball and cylinder areas keep an empty list (readArea skips a polygon under three corners).
+        corners: { type: "list", max: 64, of: { type: "vec3" } },
       },
     },
   },
@@ -356,21 +353,13 @@ export const exitSleepingSchema: PanelSchema = {
           desc: "ADMIN_C_CORNERS_DESC",
           fields: [
             {
-              widget: "list",
-              path: "points",
+              widget: "zone",
+              path: "corners",
               label: "ADMIN_F_CORNERS",
-              addLabel: "ADMIN_ADD_CORNER",
+              hint: "ADMIN_H_CORNERS",
+              heightPath: "height",
               max: 64,
-              newRow: { coords: { x: 0, y: 0, z: 0 } },
               showIf: { path: "shape", values: ["poly"] },
-              rows: [
-                {
-                  widget: "point",
-                  path: "coords",
-                  label: "ADMIN_F_CORNER",
-                  ground: true,
-                },
-              ],
             },
           ],
         },

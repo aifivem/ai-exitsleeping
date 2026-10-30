@@ -80,8 +80,7 @@
   "ADMIN_F_HEIGHT": "Height",
   "ADMIN_H_HEIGHT": "Metres up and down the area reaches (cylinder: from the centre; polygon: past its lowest and highest corner).",
   "ADMIN_C_CORNERS": "Polygon corners",
-  "ADMIN_C_CORNERS_DESC": "Walk the border and add a corner at each turn, in order; a polygon needs at least three.",
+  "ADMIN_C_CORNERS_DESC": "Add a corner at each turn of the border, in order (free camera or your position); a polygon needs at least three.",
   "ADMIN_F_CORNERS": "Corners",
-  "ADMIN_ADD_CORNER": "Add corner",
-  "ADMIN_F_CORNER": "Corner"
+  "ADMIN_H_CORNERS": "The shape is drawn in the world while this field is on screen; the height above sets how far up and down it reaches."
 }

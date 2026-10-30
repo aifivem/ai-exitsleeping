@@ -1,5 +1,5 @@
 import { cache, onServerEvent } from "@aicore-fivem/lib/client";
-import { asArgs } from "@aicore-fivem/lib/shared";
+import { asArgs, oneArg, readId } from "@aicore-fivem/lib/shared";
 import { cellOf, EVENTS, toView, type SleeperView } from "common/events";
 import { looks } from "./looks";
 
@@ -94,7 +94,7 @@ onServerEvent(
         ? [
             reset,
             puts.flatMap((p) => toView(p) ?? []),
-            removes.filter((id): id is number => Number.isInteger(id)),
+            removes.flatMap((id) => readId(id) ?? []),
           ]
         : null,
   },
@@ -103,10 +103,4 @@ onServerEvent(
 onServerEvent(EVENTS.put, { args: ([v]) => asArgs(toView(v)) }, (v) =>
   view.put(v),
 );
-onServerEvent(
-  EVENTS.remove,
-  {
-    args: ([id]) => asArgs(Number.isInteger(id) ? Number(id) : null),
-  },
-  (id) => view.remove(id),
-);
+onServerEvent(EVENTS.remove, { args: oneArg(readId) }, (id) => view.remove(id));

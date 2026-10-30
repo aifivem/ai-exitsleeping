@@ -21,5 +21,5 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["scripts", "tsdown.config.ts"]
+  "include": ["scripts", "tsdown.config.ts", "bench/run.ts"]
 }

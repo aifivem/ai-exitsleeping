@@ -1,1 +1,3 @@
-{}
+{
+  "$schema": "./schemas/areas.schema.json"
+}

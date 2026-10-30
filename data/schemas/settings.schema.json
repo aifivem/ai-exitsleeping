@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-exitsleeping/data/settings.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's JSON Schema (for editors)."
+    },
+    "wakeOn": {
+      "description": "Wake up on: Keep the default unless a spawn script calls exports['ai-exitsleeping']:PlayerLoaded() after its own spawn.",
+      "enum": [
+        "auto",
+        "export"
+      ]
+    },
+    "days": {
+      "description": "Keep bodies for: Bodies of players who logged out longer ago than this are removed.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    },
+    "spawnDistance": {
+      "description": "Draw distance: Sleeping bodies appear when a player comes this close and disappear past it.",
+      "type": "number",
+      "minimum": 5,
+      "maximum": 60
+    },
+    "hideInInstances": {
+      "description": "Ignore private worlds: Players inside a private world (a house or motel room interior) leave no body when they log out and see no bodies while inside.",
+      "type": "boolean"
+    },
+    "interactDistance": {
+      "description": "Interaction distance: How close a player must stand to carry a body or reach a vehicle.",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "maxActionDistance": {
+      "description": "Server distance check: The server refuses a carry or vehicle action from further away than this (against cheats).",
+      "type": "number",
+      "minimum": 2,
+      "maximum": 30
+    },
+    "trackSeconds": {
+      "description": "Position check: How often the server updates where carried bodies and bodies in vehicles are, so the owner wakes up at the right place.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60
+    },
+    "sleepAnims": {
+      "description": "Poses",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "properties": {
+          "dict": {
+            "description": "Animation dictionary",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "clip": {
+            "description": "Animation name",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "flags": {
+            "description": "Animation flags: GTA animation flags: 1 loops, 49 loops on the upper body while walking, 33 loops while attached.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "dict",
+          "clip",
+          "flags"
+        ]
+      }
+    },
+    "carrier": {
+      "type": "object",
+      "properties": {
+        "dict": {
+          "description": "Animation dictionary",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "clip": {
+          "description": "Animation name",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "flags": {
+          "description": "Animation flags: GTA animation flags: 1 loops, 49 loops on the upper body while walking, 33 loops while attached.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "dict",
+        "clip",
+        "flags"
+      ]
+    },
+    "carried": {
+      "type": "object",
+      "properties": {
+        "dict": {
+          "description": "Animation dictionary",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "clip": {
+          "description": "Animation name",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "flags": {
+          "description": "Animation flags: GTA animation flags: 1 loops, 49 loops on the upper body while walking, 33 loops while attached.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "dict",
+        "clip",
+        "flags"
+      ]
+    },
+    "attach": {
+      "type": "object",
+      "properties": {
+        "bone": {
+          "description": "Bone index: Bone index of the carrier the body is attached to (0 = the ped's root).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "x": {
+          "description": "Offset right",
+          "type": "number",
+          "minimum": -5,
+          "maximum": 5
+        },
+        "y": {
+          "description": "Offset forward",
+          "type": "number",
+          "minimum": -5,
+          "maximum": 5
+        },
+        "z": {
+          "description": "Offset up",
+          "type": "number",
+          "minimum": -5,
+          "maximum": 5
+        },
+        "rx": {
+          "description": "Rotation X",
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "ry": {
+          "description": "Rotation Y",
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "rz": {
+          "description": "Rotation Z",
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        }
+      },
+      "required": [
+        "bone",
+        "x",
+        "y",
+        "z",
+        "rx",
+        "ry",
+        "rz"
+      ]
+    },
+    "debug": {
+      "description": "Debug messages: Prints what the script does to the server and client consoles.",
+      "type": "boolean"
+    }
+  },
+  "required": []
+}

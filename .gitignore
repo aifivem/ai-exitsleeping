@@ -5,3 +5,4 @@ data/*.json.bak
 data/*.json.tmp
 # Panel-edited secrets (webhook urls, API keys): never in git
 data/secrets.json
+bench/.out

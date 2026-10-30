@@ -20,7 +20,8 @@ export class Sleeper {
 
   constructor(
     readonly charId: number,
-    readonly model: string,
+    /** Ped model hash. */
+    readonly model: number,
     readonly anim: number,
     public x: number,
     public y: number,
@@ -53,4 +54,10 @@ export class Sleeper {
       seat: this.seat,
     };
   }
+}
+
+/** A stored model: a hash written as text, or a model name. */
+export function modelHash(stored: string): number {
+  const n = Number(stored);
+  return Number.isInteger(n) && stored.trim() !== "" ? n : GetHashKey(stored);
 }

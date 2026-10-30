@@ -1,9 +1,9 @@
-import { isRecord } from "@aicore-fivem/lib/shared";
+import { isRecord, readFinite, readId } from "@aicore-fivem/lib/shared";
 
 /** ai-exitsleeping's net contracts and the sleeper view clients get. No natives. */
 
 export const EVENTS = {
-  /** Callback: () -> { ok, coords? } wakes the caller's own sleeping body; `coords` = where the body ended up. */
+  /** Callback: () -> true once the caller's own sleeping body is gone (the server seats / moves the player when needed). */
   wake: "ai-exitsleeping:wake",
   /** Client -> server: (cellX, cellY) the player's cell changed (the cells around it follow as a delta). */
   area: "ai-exitsleeping:area",
@@ -13,7 +13,7 @@ export const EVENTS = {
   put: "ai-exitsleeping:client:put",
   /** Server -> players watching the cell: (charId) a sleeper woke, expired or left the cell. */
   remove: "ai-exitsleeping:client:remove",
-  /** Callback: (charId) -> { ok, look } the saved look of a sleeper the caller sees (fetched once per ped). */
+  /** Callback: (charId) -> CharacterAppearance | null, the saved look of a sleeper the caller sees (fetched once per ped). */
   look: "ai-exitsleeping:look",
   /** Client -> server: (charId) pick up a sleeper lying on the ground. */
   startCarry: "ai-exitsleeping:startCarry",
@@ -50,7 +50,8 @@ export type SleeperState = "ground" | "carried" | "vehicle";
 /** What a client knows of a sleeper; the look is asked separately (EVENTS.look) when its ped is created. */
 export interface SleeperView {
   id: number;
-  model: string;
+  /** Ped model hash. */
+  model: number;
   /** Index into the panel's sleep animations (the same pose on every client). */
   anim: number;
   x: number;
@@ -65,38 +66,42 @@ export interface SleeperView {
   seat: number;
 }
 
-const finite = (n: unknown): n is number =>
-  typeof n === "number" && Number.isFinite(n);
 const STATES: readonly unknown[] = ["ground", "carried", "vehicle"];
+const isInt = (n: unknown): n is number => Number.isInteger(n);
 
 export function toView(v: unknown): SleeperView | null {
   if (!isRecord(v)) return null;
-  const { id, model, anim, x, y, z, heading, state, carrier, net, seat } = v;
+  const id = readId(v.id);
+  const x = readFinite(v.x);
+  const y = readFinite(v.y);
+  const z = readFinite(v.z);
+  const heading = readFinite(v.heading);
+  const { model, anim, state, carrier, net, seat } = v;
   if (
-    !Number.isInteger(id) ||
-    typeof model !== "string" ||
-    !Number.isInteger(anim) ||
-    !finite(x) ||
-    !finite(y) ||
-    !finite(z) ||
-    !finite(heading) ||
+    id === null ||
+    x === null ||
+    y === null ||
+    z === null ||
+    heading === null ||
+    !isInt(model) ||
+    !isInt(anim) ||
     !STATES.includes(state) ||
-    !Number.isInteger(carrier) ||
-    !Number.isInteger(net) ||
-    !Number.isInteger(seat)
+    !isInt(carrier) ||
+    !isInt(net) ||
+    !isInt(seat)
   )
     return null;
   return {
-    id: Number(id),
+    id,
     model,
-    anim: Number(anim),
+    anim,
     x,
     y,
     z,
     heading,
     state: state as SleeperState,
-    carrier: Number(carrier),
-    net: Number(net),
-    seat: Number(seat),
+    carrier,
+    net,
+    seat,
   };
 }

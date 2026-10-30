@@ -1,5 +1,9 @@
-import { addCommand, createDatabaseTables } from "@aicore-fivem/lib/server";
-import { CORE, type UnloadReason } from "@aicore-fivem/shared";
+import {
+  addCommand,
+  createDatabaseTables,
+  onCharacter,
+  vehicleFromNet,
+} from "@aicore-fivem/lib/server";
 import { Locale, ResourceName } from "common";
 import "./actions";
 import { content, core, livePed, log, panel, pedCoords } from "./content";
@@ -24,25 +28,15 @@ function onLeft(source: number, charId: number): void {
   );
 }
 
-on(
-  CORE.playerUnloadedEvent,
-  (source: number, charId: number, _reason: UnloadReason) =>
-    onLeft(source, charId),
-);
-on("playerDropped", () => sleepers.unwatch(Number(globalThis.source), false));
+// ai-core unloads before a drop; watching needs a character, so the unload also ends the player's cell watch.
+onCharacter({ unloaded: onLeft });
 
 /** Carried and seated bodies follow their carrier / vehicle; a vanished one drops to the ground. */
 function trackMoving(): void {
   for (const s of sleepers.movingBodies()) {
     const entity =
-      s.state === "vehicle"
-        ? NetworkGetEntityFromNetworkId(s.net)
-        : livePed(s.carrier);
-    const valid =
-      entity &&
-      DoesEntityExist(entity) &&
-      (s.state !== "vehicle" || GetEntityType(entity) === 2);
-    if (!valid) {
+      s.state === "vehicle" ? vehicleFromNet(s.net) : livePed(s.carrier);
+    if (!entity) {
       sleepers.setState(s, { state: "ground", carrier: 0, net: 0, seat: 0 });
       continue;
     }

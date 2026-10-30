@@ -7,12 +7,15 @@ const world = new AdminWorld(["settings"]);
 const log = createLogger(ResourceName);
 const listeners: Array<() => void> = [];
 
+const settings = world.view("settings", readSettings);
+
 /** The panel settings on this client (the cached file, then live changes). */
-export const content: { settings: Settings } = {
-  settings: readSettings(world.get("settings")),
+export const content: { readonly settings: Settings } = {
+  get settings() {
+    return settings.value;
+  },
 };
 world.onChange("settings", () => {
-  content.settings = readSettings(world.get("settings"));
   for (const fn of listeners) fn();
 });
 

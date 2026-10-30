@@ -33,7 +33,7 @@ export async function createSleeping(
     GetPlayerRoutingBucket(String(source)) !== 0
   )
     return debug("no body: private routing bucket", charId);
-  if (inAnyArea(content.areas, coords.x, coords.y, coords.z))
+  if (inAnyArea(content.areas.values(), coords.x, coords.y, coords.z))
     return debug("no body: hidden area", charId);
   for (const [id, check] of checks) {
     try {
@@ -43,8 +43,9 @@ export async function createSleeping(
       log.error(`create check ${id} (${check.resource}) failed`, error);
     }
   }
-  const fallback =
-    character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01";
+  const fallback = GetHashKey(
+    character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01",
+  );
   const look = await looks.get(charId);
   if (leaving && core.GetSourceByCharId(charId) !== null) return;
   const anim = Math.floor(Math.random() * content.settings.sleepAnims.length);

@@ -60,6 +60,51 @@ function str(value, fallback, max = 64) {
 function record(value) {
 	return typeof value == "object" && value && !Array.isArray(value) ? value : {};
 }
+// ../../../packages/lib/src/shared/strict.ts
+function readInt(value, min, max) {
+	return Number.isInteger(value) && value >= min && value <= max ? value : null;
+}
+const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([value]) => {
+	let parsed = read(value);
+	return parsed === null ? null : [parsed];
+}, distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+// ../../../packages/lib/src/shared/zone.ts
+function zoneContains(shape, x, y, z) {
+	switch (shape.type) {
+		case "sphere": {
+			let dx = x - shape.center.x, dy = y - shape.center.y, dz = z - shape.center.z;
+			return dx * dx + dy * dy + dz * dz <= shape.radius * shape.radius;
+		}
+		case "cylinder": {
+			let dx = x - shape.center.x, dy = y - shape.center.y;
+			return dx * dx + dy * dy <= shape.radius * shape.radius && Math.abs(z - shape.center.z) <= shape.height;
+		}
+		case "poly": {
+			if (z < shape.minZ || z > shape.maxZ) return !1;
+			let inside = !1, p = shape.points;
+			for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+				let a = p[i], b = p[j];
+				a.y > y != b.y > y && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x && (inside = !inside);
+			}
+			return inside;
+		}
+		default: return shape;
+	}
+}
+function polyFromCorners(corners, height) {
+	if (corners.length < 3) return null;
+	let minZ = Infinity, maxZ = -Infinity;
+	for (let c of corners) minZ = Math.min(minZ, c.z), maxZ = Math.max(maxZ, c.z);
+	return {
+		type: "poly",
+		points: corners.map(({ x, y }) => ({
+			x,
+			y
+		})),
+		minZ: minZ - height,
+		maxZ: maxZ + height
+	};
+}
 // ../../../packages/lib/src/shared/records.ts
 const isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
 function readRecords(raw, readOne) {
@@ -154,7 +199,6 @@ function formatText(template, args) {
 		return value === void 0 ? match : String(value);
 	});
 }
-const asArgs = (value) => value === null ? null : [value];
 function createLogger(resource) {
 	let prefix = `[${resource}]`;
 	return {
@@ -229,7 +273,7 @@ const CORE = {
 	clientPlayerLoadedEvent: "ai-core:client:playerLoaded",
 	clientPlayerUnloadedEvent: "ai-core:client:playerUnloaded",
 	clientCharacterPortraitEvent: "ai-core:client:characterPortrait",
-	clientCharacterLookEvent: "ai-core:client:characterLook",
+	characterLooksEvent: "ai-core:client:characterLooks",
 	clientPromptPressedEvent: "ai-core:client:promptPressed",
 	clientCacheEvent: "ai-core:client:cache",
 	clientHudVisibleEvent: "ai-core:client:hudVisible",
@@ -252,7 +296,18 @@ const CORE = {
 	recommendationEvent: "ai-core:admin:recommendation",
 	worldEvent: (resource) => `${resource}:admin:world`,
 	worldChangesCallback: (resource) => `${resource}:admin:worldChanges`
-}, named = new Set();
+};
+// ../../../packages/shared/src/appearance.ts
+function toCharacterAppearance(value) {
+	if (typeof value != "object" || !value || Array.isArray(value)) return null;
+	let { model, data } = value;
+	return Number.isInteger(model) && model !== 0 && data != null ? {
+		model,
+		data
+	} : null;
+}
+// ../../../packages/lib/src/fivem/exports.ts
+const named = new Set();
 function registerExport(name, handler) {
 	named.add(name), globalThis.exports(name, handler);
 	let first = name.charAt(0), twin = (first === first.toUpperCase() ? first.toLowerCase() : first.toUpperCase()) + name.slice(1);
@@ -289,7 +344,7 @@ function loadLocaleTexts(resource = GetCurrentResourceName()) {
 	return texts;
 }
 // ../../../packages/lib/src/fivem/callbackNames.ts
-const requestEvent = (name) => `aicore:cb:${name}`, responseEvent = (resource) => `aicore:cbr:${resource}`, core$15 = resourceExport(CORE.resource), log$6 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$15.GetCharacter(source) !== null || "no character loaded", gates = new Set();
+const requestEvent = (name) => `aicore:cb:${name}`, responseEvent = (resource) => `aicore:cbr:${resource}`, core$16 = resourceExport(CORE.resource), log$6 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$16.GetCharacter(source) !== null || "no character loaded", gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -397,7 +452,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$14 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$15 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -411,7 +466,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$14.GetLookupValues(source);
+			list = core$15.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -614,7 +669,7 @@ function writeSchema(resource, name, text, log) {
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
 // ../../../packages/lib/src/server/admin/panel.ts
-const core$13 = resourceExport(CORE.resource), DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
+const core$14 = resourceExport(CORE.resource), DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
 function imported(spec, value) {
 	let base = clone(spec.newRecord ?? {}), out = {};
 	for (let name of Object.keys(spec.sections)) {
@@ -638,7 +693,7 @@ var AdminPanel = class {
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges)), setImmediate(() => core$13.RegisterAdminPanel(this.resource));
+		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges)), setImmediate(() => core$14.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -772,7 +827,7 @@ var AdminPanel = class {
 		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
 		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
 		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$13.AdminPanelChanged({
+		if (core$14.AdminPanelChanged({
 			resource: this.resource,
 			file,
 			key,
@@ -804,7 +859,7 @@ function notify(source, text, kind = "info", duration) {
 }
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/online.ts
-const core$11 = resourceExport(CORE.resource);
+const core$12 = resourceExport(CORE.resource);
 var OnlinePlayers = class {
 	players = new Map();
 	onDuty = new Map();
@@ -813,7 +868,7 @@ var OnlinePlayers = class {
 		if (this.started) return;
 		this.started = !0;
 		let load = (source, character) => {
-			this.put(source, character, (core$11.GetJobs(source) ?? []).map((m) => m.job), (core$11.GetGangs(source) ?? []).map((m) => m.gang)), this.setDuty(source, core$11.GetDutyJob(source));
+			this.put(source, character, (core$12.GetJobs(source) ?? []).map((m) => m.job), (core$12.GetGangs(source) ?? []).map((m) => m.gang)), this.setDuty(source, core$12.GetDutyJob(source));
 		};
 		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => {
 			let player = this.players.get(source);
@@ -822,8 +877,8 @@ var OnlinePlayers = class {
 			let player = this.players.get(source);
 			player && (player.gangs = gangs.map((m) => m.gang));
 		}), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
-		for (let source of core$11.GetLoadedSources()) {
-			let character = core$11.GetCharacter(source);
+		for (let source of core$12.GetLoadedSources()) {
+			let character = core$12.GetCharacter(source);
 			character && load(source, character);
 		}
 	}
@@ -866,8 +921,61 @@ var OnlinePlayers = class {
 		return this.start(), this.onDuty.get(job) ?? EMPTY$2;
 	}
 };
-const EMPTY$2 = new Set();
-new OnlinePlayers(), resourceExport(CORE.resource), resourceExport(CORE.resource), createLogger(GetCurrentResourceName());
+const EMPTY$2 = new Set(), online = new OnlinePlayers();
+resourceExport(CORE.resource);
+// ../../../packages/lib/src/server/vehicle.ts
+function vehicleFromNet(netId) {
+	if (readId(netId) === null) return 0;
+	let entity = NetworkGetEntityFromNetworkId(netId);
+	return entity && DoesEntityExist(entity) && GetEntityType(entity) === 2 ? entity : 0;
+}
+function vehicleNearPlayer(source, netId, options = {}) {
+	let vehicle = vehicleFromNet(netId);
+	if (!vehicle) return 0;
+	let ped = GetPlayerPed(String(source));
+	if (options.driver) return GetPedInVehicleSeat(vehicle, -1) === ped ? vehicle : 0;
+	let [px = 0, py = 0, pz = 0] = GetEntityCoords(ped), [vx = 0, vy = 0, vz = 0] = GetEntityCoords(vehicle);
+	return Math.hypot(vx - px, vy - py, vz - pz) <= (options.metres ?? 5) ? vehicle : 0;
+}
+resourceExport(CORE.resource);
+// ../../../packages/lib/src/server/players.ts
+const log$4 = createLogger(GetCurrentResourceName()), dropped = new Set();
+let listening = !1;
+function onDropped(fn) {
+	listening || (listening = !0, on("playerDropped", () => {
+		let source = Number(globalThis.source);
+		for (let handler of dropped) handler(source);
+	})), dropped.add(fn);
+}
+function onCharacter(handlers) {
+	let live = new Map(), deliver = (source, character) => {
+		if (live.set(source, character.id), handlers.loaded) try {
+			let result = handlers.loaded(source, character);
+			result instanceof Promise && result.catch((error) => log$4.error(`character loaded handler failed for ${source}`, error));
+		} catch (error) {
+			log$4.error(`character loaded handler failed for ${source}`, error);
+		}
+	}, end = (source, charId) => {
+		if (live.delete(source)) try {
+			handlers.unloaded?.(source, charId);
+		} catch (error) {
+			log$4.error(`character unloaded handler failed for ${source}`, error);
+		}
+	};
+	on(CORE.playerLoadedEvent, (source, character) => {
+		let previous = live.get(source);
+		previous !== void 0 && end(source, previous), deliver(source, character);
+	}), on(CORE.playerUnloadedEvent, (source, charId) => end(source, charId)), onDropped((source) => setImmediate(() => {
+		let charId = live.get(source);
+		charId !== void 0 && end(source, charId);
+	})), setImmediate(() => {
+		for (let source of online.sources()) {
+			if (live.has(source)) continue;
+			let character = online.character(source);
+			character && deliver(source, character);
+		}
+	});
+}
 // ../../../packages/lib/src/server/command.ts
 const resource$3 = GetCurrentResourceName(), log$3 = createLogger(resource$3);
 let texts = null;
@@ -15313,7 +15421,19 @@ async function createDatabaseTables(resource, file) {
 		else for (let [name, definition] of statement.columns) columns.has(name) || (await mysql.query(`ALTER TABLE \`${statement.table}\` ADD COLUMN ${definition}`), log$1.info(`^2added column ${statement.table}.${name}^7 (${resource})`));
 	}
 }
-IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+// ../../../packages/lib/src/server/appearance.ts
+const core$3 = resourceExport(CORE.resource), appearance = {
+	get: (charId) => new Promise((resolve) => {
+		try {
+			core$3.GetCharacterAppearance(charId, (look) => resolve(toCharacterAppearance(look)));
+		} catch {
+			resolve(null);
+		}
+	}),
+	provider: () => core$3.GetAppearanceSystem()
+}, core$2 = resourceExport(CORE.resource), characters = { setOfflinePosition: (charId, position) => core$2.SetOfflinePosition(charId, position) };
+resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/index.ts
 function isOnline(source) {
 	return !!GetPlayerName(String(source));
@@ -15362,59 +15482,25 @@ const EVENTS = {
 		z: num(v.z, 0)
 	};
 };
-function readAreas(raw) {
-	let out = [];
-	for (let value of Object.values(record(raw))) {
-		let v = record(value), shape = str(v.shape, "sphere", 16), radius = num(v.radius, 10, 1, 2e3), height = num(v.height, 10, .5, 1e3);
-		if (shape === "poly") {
-			let corners = (Array.isArray(v.points) ? v.points : []).map((p) => vec3(record(p).coords));
-			if (corners.length < 3) continue;
-			let zs = corners.map((c) => c.z);
-			out.push({
-				kind: "poly",
-				points: corners.map(({ x, y }) => ({
-					x,
-					y
-				})),
-				minZ: Math.min(...zs) - height,
-				maxZ: Math.max(...zs) + height
-			});
-		} else shape === "cylinder" ? out.push({
-			kind: "cylinder",
-			center: vec3(v.center),
-			radius,
-			height
-		}) : out.push({
-			kind: "sphere",
-			center: vec3(v.center),
-			radius
-		});
-	}
-	return out;
+function readArea(_key, v) {
+	let shape = str(v.shape, "sphere", 16), radius = num(v.radius, 10, 1, 2e3), height = num(v.height, 10, .5, 1e3);
+	return shape === "poly" ? polyFromCorners(Array.isArray(v.corners) ? v.corners.map(vec3) : [], height) : shape === "cylinder" ? {
+		type: "cylinder",
+		center: vec3(v.center),
+		radius,
+		height
+	} : {
+		type: "sphere",
+		center: vec3(v.center),
+		radius
+	};
 }
-function inArea(area, x, y, z) {
-	switch (area.kind) {
-		case "sphere": {
-			let { center: c, radius: r } = area;
-			return (x - c.x) ** 2 + (y - c.y) ** 2 + (z - c.z) ** 2 <= r * r;
-		}
-		case "cylinder": {
-			let { center: c, radius: r } = area;
-			return (x - c.x) ** 2 + (y - c.y) ** 2 <= r * r && Math.abs(z - c.z) <= area.height;
-		}
-		case "poly": {
-			if (z < area.minZ || z > area.maxZ) return !1;
-			let inside = !1, p = area.points;
-			for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-				let a = p[i], b = p[j];
-				a.y > y != b.y > y && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x && (inside = !inside);
-			}
-			return inside;
-		}
-		default: return area;
-	}
+function inAnyArea(areas, x, y, z) {
+	for (let area of areas) if (zoneContains(area, x, y, z)) return !0;
+	return !1;
 }
-const inAnyArea = (areas, x, y, z) => areas.some((area) => inArea(area, x, y, z)), DEFAULT_SLEEP_ANIM = {
+// resource/common/settings.ts
+const DEFAULT_SLEEP_ANIM = {
 	dict: "amb@world_human_bum_slumped@male@laying_on_left_side@idle_a",
 	clip: "idle_b",
 	flags: 1
@@ -15612,7 +15698,7 @@ const int = (min, max) => ({
 				},
 				radius: 25,
 				height: 10,
-				points: []
+				corners: []
 			},
 			sections: {
 				label: {
@@ -15631,13 +15717,10 @@ const int = (min, max) => ({
 				center: { type: "vec3" },
 				radius: range(1, 2e3),
 				height: range(.5, 1e3),
-				points: {
+				corners: {
 					type: "list",
 					max: 64,
-					of: {
-						type: "object",
-						fields: { coords: { type: "vec3" } }
-					}
+					of: { type: "vec3" }
 				}
 			}
 		}
@@ -15837,36 +15920,26 @@ const int = (min, max) => ({
 				title: "ADMIN_C_CORNERS",
 				desc: "ADMIN_C_CORNERS_DESC",
 				fields: [{
-					widget: "list",
-					path: "points",
+					widget: "zone",
+					path: "corners",
 					label: "ADMIN_F_CORNERS",
-					addLabel: "ADMIN_ADD_CORNER",
+					hint: "ADMIN_H_CORNERS",
+					heightPath: "height",
 					max: 64,
-					newRow: { coords: {
-						x: 0,
-						y: 0,
-						z: 0
-					} },
 					showIf: {
 						path: "shape",
 						values: ["poly"]
-					},
-					rows: [{
-						widget: "point",
-						path: "coords",
-						label: "ADMIN_F_CORNER",
-						ground: !0
-					}]
+					}
 				}]
 			}]
 		}
 	]
-}, core = resourceExport("ai-core"), log = createLogger(ResourceName), panel = new AdminPanel(exitSleepingSchema), content = {
-	settings: readSettings(panel.get("settings")),
-	areas: readAreas(panel.get("areas"))
-};
-panel.onChange("settings", () => content.settings = readSettings(panel.get("settings"))), panel.onChange("areas", () => content.areas = readAreas(panel.get("areas")));
-const debug = (message, ...args) => {
+}, core = resourceExport("ai-core"), log = createLogger(ResourceName), panel = new AdminPanel(exitSleepingSchema), settings = panel.view("settings", readSettings), content = {
+	get settings() {
+		return settings.value;
+	},
+	areas: panel.records("areas", readArea)
+}, debug = (message, ...args) => {
 	content.settings.debug && log.info(message, ...args);
 };
 function pedCoords(ped) {
@@ -15886,13 +15959,12 @@ function livePed(source) {
 const looks = new class {
 	cache = new Map();
 	pending = new Map();
-	warned = !1;
 	async get(charId) {
 		let hit = this.cache.get(charId);
 		if (hit !== void 0) return this.cache.delete(charId), this.cache.set(charId, hit), hit;
 		let running = this.pending.get(charId);
 		if (running) return running;
-		let load = this.read(charId).finally(() => this.pending.delete(charId));
+		let load = appearance.get(charId).finally(() => this.pending.delete(charId));
 		this.pending.set(charId, load);
 		let look = await load;
 		if (this.cache.set(charId, look), this.cache.size > 2e3) {
@@ -15903,17 +15975,6 @@ const looks = new class {
 	}
 	forget(charId) {
 		this.cache.delete(charId);
-	}
-	async read(charId) {
-		try {
-			let row = await mysql.single("SELECT model, data FROM ai_appearance_characters WHERE char_id = ?", [charId]);
-			return row ? {
-				model: typeof row.model == "string" ? row.model : null,
-				data: JSON.parse(row.data)
-			} : null;
-		} catch (error) {
-			return this.warned || log.warn("looks could not be read from ai_appearance_characters (is ai-appearance installed?)", error), this.warned = !0, null;
-		}
 	}
 }(), db = tables(), LOAD_CHUNK = 5e3, PURGE_CHUNK = 5e3;
 async function purgeOlderThan(days) {
@@ -16022,7 +16083,12 @@ var Sleeper = class {
 			seat: this.seat
 		};
 	}
-}, AreaStream = class {
+};
+function modelHash(stored) {
+	let n = Number(stored);
+	return Number.isInteger(n) && stored.trim() !== "" ? n : GetHashKey(stored);
+}
+var AreaStream = class {
 	byId;
 	cells;
 	watchers;
@@ -16107,7 +16173,7 @@ const EMPTY = new Set(), sleepers = new class {
 	async load() {
 		let purged = await purgeOlderThan(content.settings.days), now = Date.now();
 		await loadAll((row) => {
-			let s = new Sleeper(row.char_id, row.model, row.anim, row.x, row.y, row.z, row.heading, now - Number(row.age) * 1e3);
+			let s = new Sleeper(row.char_id, modelHash(row.model), row.anim, row.x, row.y, row.z, row.heading, now - Number(row.age) * 1e3);
 			this.byId.set(s.charId, s), this.cells.file(s, this.wantedCell(s));
 		}), this.loaded = !0, log.info(`${this.byId.size} sleeping bodies loaded (${purged} expired)`), this.stream.resendAll();
 	}
@@ -16129,7 +16195,7 @@ const EMPTY = new Set(), sleepers = new class {
 	add(s) {
 		this.remove(s.charId, !1), this.byId.set(s.charId, s), this.place(s), this.writes.push(`insert ${s.charId}`, () => insertSleeper({
 			char_id: s.charId,
-			model: s.model,
+			model: String(s.model),
 			anim: s.anim,
 			x: s.x,
 			y: s.y,
@@ -16146,7 +16212,7 @@ const EMPTY = new Set(), sleepers = new class {
 	}
 	setState(s, next, coords) {
 		let before = this.recipients(s);
-		this.track(s, !1), Object.assign(s, next), this.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s, before), debug("state", s.charId, s.state);
+		this.track(s, !1), Object.assign(s, next), this.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s, before), s.moving || this.saveSpawn(s), debug("state", s.charId, s.state);
 	}
 	move(s, coords) {
 		let before = this.recipients(s);
@@ -16162,6 +16228,7 @@ const EMPTY = new Set(), sleepers = new class {
 	}
 	flush() {
 		if (this.dirty.size === 0) return this.writes.idle();
+		for (let s of this.dirty) s.moving && this.saveSpawn(s);
 		let rows = [...this.dirty].map((s) => ({
 			char_id: s.charId,
 			x: s.x,
@@ -16177,11 +16244,14 @@ const EMPTY = new Set(), sleepers = new class {
 	unwatch(source, tell) {
 		this.stream.unwatch(source, tell);
 	}
+	saveSpawn(s) {
+		characters.setOfflinePosition(s.charId, s.coords);
+	}
 	setCoords(s, c) {
 		s.x = c.x, s.y = c.y, s.z = c.z, s.heading = c.heading, this.dirty.add(s), emit(HOOKS.positionChanged, s.charId, c);
 	}
 	wantedCell(s) {
-		if (!s.moving && inAnyArea(content.areas, s.x, s.y, s.z)) return "";
+		if (!s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z)) return "";
 		let { cx, cy } = cellOf(s.x, s.y);
 		return cellKey(cx, cy);
 	}
@@ -16201,15 +16271,12 @@ const EMPTY = new Set(), sleepers = new class {
 	track(s, on) {
 		on ? this.moving.add(s) : this.moving.delete(s), s.state === "carried" && (on ? this.carriers.set(s.carrier, s) : this.carriers.get(s.carrier) === s && this.carriers.delete(s.carrier));
 	}
-}(), guards = [hasCharacter()], isId = (v) => Number.isInteger(v) && Number(v) > 0, dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-function vehicleNear(source, net) {
-	let veh = NetworkGetEntityFromNetworkId(net);
-	if (!veh || !DoesEntityExist(veh) || GetEntityType(veh) !== 2) return 0;
-	let ped = livePed(source);
-	return ped && dist(pedCoords(ped), pedCoords(veh)) <= content.settings.maxActionDistance + 2 ? veh : 0;
-}
+}(), guards = [hasCharacter()], vehicleNear = (source, net) => vehicleNearPlayer(source, net, { metres: content.settings.maxActionDistance + 2 });
 onClientEvent(EVENTS.area, {
-	args: ([cx, cy]) => Number.isInteger(cx) && Number.isInteger(cy) ? [Number(cx), Number(cy)] : null,
+	args: ([rawX, rawY]) => {
+		let cx = readInt(rawX, -1e3, 1e3), cy = readInt(rawY, -1e3, 1e3);
+		return cx !== null && cy !== null ? [cx, cy] : null;
+	},
 	rate: {
 		count: 2,
 		windowMs: 1e3
@@ -16222,22 +16289,19 @@ onClientEvent(EVENTS.area, {
 	let p = pedCoords(ped), real = cellOf(p.x, p.y);
 	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || sleepers.watch(source, cx, cy);
 }), onClientCallback(EVENTS.look, {
-	args: ([id]) => asArgs(isId(id) ? id : null),
+	args: oneArg(readId),
 	guards
 }, async (source, id) => {
 	let s = sleepers.get(id);
-	return !s || !sleepers.visibleTo(s, source) ? { ok: !1 } : {
-		ok: !0,
-		look: (await looks.get(id))?.data ?? null
-	};
+	return s && sleepers.visibleTo(s, source) ? looks.get(id) : null;
 }), onClientEvent(EVENTS.startCarry, {
-	args: ([id]) => asArgs(isId(id) ? id : null),
+	args: oneArg(readId),
 	guards
 }, (source, id) => {
 	let s = sleepers.get(id);
 	if (!s || s.state !== "ground" || !s.cell || sleepers.carriedBy(source)) return;
 	let ped = livePed(source);
-	ped && !GetVehiclePedIsIn(ped, !1) && (dist(pedCoords(ped), s) > content.settings.maxActionDistance || sleepers.setState(s, {
+	ped && !GetVehiclePedIsIn(ped, !1) && (distance(pedCoords(ped), s) > content.settings.maxActionDistance || sleepers.setState(s, {
 		state: "carried",
 		carrier: source,
 		net: 0,
@@ -16254,7 +16318,10 @@ onClientEvent(EVENTS.area, {
 		seat: 0
 	}, ped ? pedCoords(ped) : void 0);
 }, { guards }), onClientEvent(EVENTS.putInVehicle, {
-	args: ([net, seat]) => isId(net) && Number.isInteger(seat) && Number(seat) >= 0 && Number(seat) < 16 ? [Number(net), Number(seat)] : null,
+	args: ([rawNet, rawSeat]) => {
+		let net = readId(rawNet), seat = readInt(rawSeat, 0, 15);
+		return net !== null && seat !== null ? [net, seat] : null;
+	},
 	guards
 }, (source, net, seat) => {
 	let s = sleepers.carriedBy(source);
@@ -16270,7 +16337,7 @@ onClientEvent(EVENTS.area, {
 		}, pedCoords(veh));
 	}
 }), onClientEvent(EVENTS.takeOut, {
-	args: ([net]) => asArgs(isId(net) ? Number(net) : null),
+	args: oneArg(readId),
 	guards
 }, (source, net) => {
 	if (sleepers.carriedBy(source)) return;
@@ -16295,13 +16362,13 @@ async function createSleeping(source, charId, leaving) {
 	if (!ped || !character) return;
 	let coords = pedCoords(ped);
 	if (content.settings.hideInInstances && GetPlayerRoutingBucket(String(source)) !== 0) return debug("no body: private routing bucket", charId);
-	if (inAnyArea(content.areas, coords.x, coords.y, coords.z)) return debug("no body: hidden area", charId);
+	if (inAnyArea(content.areas.values(), coords.x, coords.y, coords.z)) return debug("no body: hidden area", charId);
 	for (let [id, check] of checks) try {
 		if (check.run(source, charId, coords) === !1) return debug(`no body: refused by ${id}`, charId);
 	} catch (error) {
 		log.error(`create check ${id} (${check.resource}) failed`, error);
 	}
-	let fallback = character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01", look = await looks.get(charId);
+	let fallback = GetHashKey(character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01"), look = await looks.get(charId);
 	if (leaving && core.GetSourceByCharId(charId) !== null) return;
 	let anim = Math.floor(Math.random() * content.settings.sleepAnims.length);
 	sleepers.add(new Sleeper(charId, look?.model ?? fallback, anim, coords.x, coords.y, coords.z, coords.heading, Date.now()));
@@ -16322,8 +16389,8 @@ function retry(label, step) {
 }
 function warpIntoVehicle(source, net, seat) {
 	retry("wake vehicle warp", () => {
-		let ped = livePed(source), veh = NetworkGetEntityFromNetworkId(net);
-		if (!ped || !veh || !DoesEntityExist(veh) || GetPedInVehicleSeat(veh, seat) !== 0) return !0;
+		let ped = livePed(source), veh = vehicleFromNet(net);
+		if (!ped || !veh || GetPedInVehicleSeat(veh, seat) !== 0) return !0;
 		SetPedIntoVehicle(ped, veh, seat);
 	});
 }
@@ -16339,16 +16406,9 @@ function warpToCarrier(source, carrier) {
 async function wake(source) {
 	await sleepers.ready();
 	let charId = core.GetCharacter(source)?.id, s = charId === void 0 ? void 0 : sleepers.get(charId);
-	if (!s || !isOnline(source)) return { ok: !0 };
-	let { state, net, seat, carrier } = s, coords = s.coords;
-	if (sleepers.remove(s.charId), debug("woke", s.charId, state), state === "vehicle") {
-		let veh = NetworkGetEntityFromNetworkId(net);
-		if (veh && DoesEntityExist(veh)) return warpIntoVehicle(source, net, seat), { ok: !0 };
-	} else if (state === "carried" && livePed(carrier)) return warpToCarrier(source, carrier), { ok: !0 };
-	return {
-		ok: !0,
-		coords
-	};
+	if (!s || !isOnline(source)) return !0;
+	let { state, net, seat, carrier } = s;
+	return sleepers.remove(s.charId), debug("woke", s.charId, state), state === "vehicle" && vehicleFromNet(net) ? warpIntoVehicle(source, net, seat) : state === "carried" && livePed(carrier) && warpToCarrier(source, carrier), !0;
 }
 onClientCallback(EVENTS.wake, (source) => wake(source), {
 	guards: [hasCharacter()],
@@ -16368,11 +16428,11 @@ function onLeft(source, charId) {
 	}
 	sleepers.unwatch(source, !1), createSleeping(source, charId, !0).catch((error) => log.error(`body of character ${charId} could not be created`, error));
 }
-on(CORE.playerUnloadedEvent, (source, charId, _reason) => onLeft(source, charId)), on("playerDropped", () => sleepers.unwatch(Number(globalThis.source), !1));
+onCharacter({ unloaded: onLeft });
 function trackMoving() {
 	for (let s of sleepers.movingBodies()) {
-		let entity = s.state === "vehicle" ? NetworkGetEntityFromNetworkId(s.net) : livePed(s.carrier);
-		if (!entity || !DoesEntityExist(entity) || s.state === "vehicle" && GetEntityType(entity) !== 2) {
+		let entity = s.state === "vehicle" ? vehicleFromNet(s.net) : livePed(s.carrier);
+		if (!entity) {
 			sleepers.setState(s, {
 				state: "ground",
 				carrier: 0,

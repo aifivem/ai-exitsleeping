@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-exitsleeping/data/areas.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's JSON Schema (for editors)."
+    }
+  },
+  "patternProperties": {
+    "^[a-z0-9_]{2,32}$": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "Name",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "shape": {
+          "description": "Shape: A ball or a cylinder around a centre point, or a polygon from corner points.",
+          "enum": [
+            "sphere",
+            "cylinder",
+            "poly"
+          ]
+        },
+        "center": {
+          "description": "Centre: The middle of the area.",
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          }
+        },
+        "radius": {
+          "description": "Radius: Metres from the centre to the edge.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2000
+        },
+        "height": {
+          "description": "Height: Metres up and down the area reaches (cylinder: from the centre; polygon: past its lowest and highest corner).",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1000
+        },
+        "corners": {
+          "description": "Corners: The shape is drawn in the world while this field is on screen; the height above sets how far up and down it reaches.",
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "label",
+        "shape",
+        "center",
+        "radius",
+        "height",
+        "corners"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
