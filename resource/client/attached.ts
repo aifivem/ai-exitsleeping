@@ -1,4 +1,9 @@
-import { cache, LocalPed, requestAnimDict } from "@aicore-fivem/lib/client";
+import {
+  cache,
+  every,
+  LocalPed,
+  requestAnimDict,
+} from "@aicore-fivem/lib/client";
 import { HOOKS, type SleeperView } from "common/events";
 import { looks } from "./looks";
 import { hidden } from "./rules";
@@ -23,12 +28,15 @@ interface Entry {
  */
 class AttachedPeds {
   private readonly entries = new Map<number, Entry>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly job = every(500, () => this.check(), {
+    active: false,
+    name: "attached",
+  });
 
   add(view: SleeperView): void {
     this.remove(view.id);
     this.entries.set(view.id, { view, ped: null });
-    this.timer ??= setInterval(() => this.check(), 500);
+    this.job.set(true);
     this.check();
   }
 
@@ -37,10 +45,7 @@ class AttachedPeds {
     if (!entry) return;
     this.despawn(entry);
     this.entries.delete(id);
-    if (this.entries.size === 0 && this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    if (this.entries.size === 0) this.job.set(false);
   }
 
   clear(): void {

@@ -1,4 +1,4 @@
-import { cache, onServerEvent } from "@aicore-fivem/lib/client";
+import { cache, every, onServerEvent } from "@aicore-fivem/lib/client";
 import { asArgs, oneArg, readId } from "@aicore-fivem/lib/shared";
 import { cellOf, EVENTS, toView, type SleeperView } from "common/events";
 import { looks } from "./looks";
@@ -18,7 +18,10 @@ class View {
   readonly inVehicles = new Map<number, Set<number>>();
   private readonly listeners: Listener[] = [];
   private cell = "";
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly job = every(2000, () => this.watchCell(), {
+    active: false,
+    name: "sleeperCell",
+  });
 
   listen(listener: Listener): void {
     this.listeners.push(listener);
@@ -28,13 +31,12 @@ class View {
   start(): void {
     this.cell = "";
     this.watchCell();
-    this.timer ??= setInterval(() => this.watchCell(), 2000);
+    this.job.set(true);
   }
 
   /** Stops (character switch): every body goes. */
   stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.job.set(false);
     this.area(true, [], []);
   }
 

@@ -1,15 +1,12 @@
+import { spec } from "@aicore-fivem/lib/shared";
 import type { DataSpec, PanelSchema, WidgetSpec } from "@aicore-fivem/shared";
 
-const int = (min: number, max: number) =>
-  ({ type: "number", min, max, integer: true }) as const;
-const range = (min: number, max: number) =>
-  ({ type: "number", min, max }) as const;
 const ANIM_SPEC: DataSpec = {
   type: "object",
   fields: {
     dict: { type: "text", min: 1, max: 128 },
     clip: { type: "text", min: 1, max: 128 },
-    flags: int(0, 65535),
+    flags: spec.int(0, 65535),
   },
 };
 
@@ -100,25 +97,25 @@ export const exitSleepingSchema: PanelSchema = {
       defaults: SETTINGS_DEFAULTS,
       sections: {
         wakeOn: { type: "enum", values: ["auto", "export"] },
-        days: int(1, 365),
-        spawnDistance: range(5, 60),
+        days: spec.int(1, 365),
+        spawnDistance: spec.num(5, 60),
         hideInInstances: { type: "bool" },
-        interactDistance: range(1, 10),
-        maxActionDistance: range(2, 30),
-        trackSeconds: int(1, 60),
+        interactDistance: spec.num(1, 10),
+        maxActionDistance: spec.num(2, 30),
+        trackSeconds: spec.int(1, 60),
         sleepAnims: { type: "list", min: 1, max: 20, of: ANIM_SPEC },
         carrier: ANIM_SPEC,
         carried: ANIM_SPEC,
         attach: {
           type: "object",
           fields: {
-            bone: int(0, 65535),
-            x: range(-5, 5),
-            y: range(-5, 5),
-            z: range(-5, 5),
-            rx: range(-360, 360),
-            ry: range(-360, 360),
-            rz: range(-360, 360),
+            bone: spec.int(0, 65535),
+            x: spec.num(-5, 5),
+            y: spec.num(-5, 5),
+            z: spec.num(-5, 5),
+            rx: spec.num(-360, 360),
+            ry: spec.num(-360, 360),
+            rz: spec.num(-360, 360),
           },
         },
         debug: { type: "bool" },
@@ -140,8 +137,8 @@ export const exitSleepingSchema: PanelSchema = {
         label: { type: "text", min: 1, max: 48 },
         shape: { type: "enum", values: ["sphere", "cylinder", "poly"] },
         center: { type: "vec3" },
-        radius: range(1, 2000),
-        height: range(0.5, 1000),
+        radius: spec.num(1, 2000),
+        height: spec.num(0.5, 1000),
         // No `min: 3`: ball and cylinder areas keep an empty list (readArea skips a polygon under three corners).
         corners: { type: "list", max: 64, of: { type: "vec3" } },
       },

@@ -1,7 +1,8 @@
 import {
   cache,
-  keyHints,
+  every,
   Keybind,
+  keyHints,
   onCache,
   player,
 } from "@aicore-fivem/lib/client";
@@ -19,7 +20,10 @@ class CarrySession {
   /** Character id of the body carried, 0 when none. */
   active = 0;
   private waiting = false;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly job = every(1000, () => this.play(), {
+    active: false,
+    name: "carry",
+  });
   private readonly listeners: Array<() => void> = [];
 
   onChange(fn: () => void): void {
@@ -47,8 +51,7 @@ class CarrySession {
     if (!this.active) return;
     this.active = 0;
     this.waiting = false;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.job.set(false);
     player.stopAnim();
     keyHints.hide("drop");
     for (const fn of this.listeners) fn();
@@ -60,7 +63,7 @@ class CarrySession {
     keyHints.show("drop", { label: Locale("STOP_CARRYING"), keybind: KEYBIND });
     this.play();
     // Put the animation back when something interrupts it (a fall, a bump).
-    this.timer = setInterval(() => this.play(), 1000);
+    this.job.set(true);
     for (const fn of this.listeners) fn();
   }
 

@@ -1,6 +1,7 @@
 import {
   addCommand,
   createDatabaseTables,
+  every,
   onCharacter,
   vehicleFromNet,
 } from "@aicore-fivem/lib/server";
@@ -45,10 +46,12 @@ function trackMoving(): void {
   }
 }
 
-let trackTimer = setInterval(trackMoving, content.settings.trackSeconds * 1000);
+const track = () =>
+  every(content.settings.trackSeconds * 1000, trackMoving, { name: "track" });
+let trackJob = track();
 panel.onChange("settings", () => {
-  clearInterval(trackTimer);
-  trackTimer = setInterval(trackMoving, content.settings.trackSeconds * 1000);
+  trackJob.stop();
+  trackJob = track();
 });
 panel.onChange("areas", () => sleepers.refreshHidden());
 
@@ -56,8 +59,8 @@ const flush = (why: string) =>
   sleepers
     .flush()
     .catch((error: unknown) => log.error(`flush failed (${why})`, error));
-setInterval(() => void flush("interval"), 10_000);
-setInterval(() => sleepers.expire(), 600_000);
+every(10_000, () => flush("interval"), { name: "flush" });
+every(600_000, () => sleepers.expire(), { name: "expire" });
 on("txAdmin:events:serverShuttingDown", () => void flush("shutdown"));
 on("onResourceStop", (resource: string) => {
   if (resource === ResourceName) void flush("resource stop");
