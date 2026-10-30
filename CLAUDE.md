@@ -1,0 +1,34 @@
+# ai-exitsleeping
+
+A player who logs out (drop or back to the character screen) stays in the world as a sleeping body where they left; others can carry it, put it into a vehicle seat and take it out again, and the owner wakes up where the body ended up. Port of tgiann-exit-sleeping. Depends on ai-core (characters, unload / load events, prompts, panel); looks come from ai-appearance (optional).
+
+## Decisions
+
+- Bodies are local peds on every client, fed by server data (as in the original): nothing networked, so strict entity lockdown, server entity counts and ownership migration never matter. The server only keeps records; a vehicle seat taken by a body is known from those records.
+- Server memory is the truth, filed by 64 m cell. A player sends their cell when it changes and gets what entered / left the 3x3 cells around it; after that only puts and removes for those cells, and a carried body always reaches its carrier. Area deltas go in chunks of 20 views as ordinary events (a latent event could overtake later puts). Measured with natives stubbed: 1M bodies = ~70 MB heap, a fresh 3x3 snapshot ~0.25 ms and ~360 views per player, a hidden-area re-check 74 ms, the expiry walk 14 ms.
+- The look is never copied: the server reads it from `ai_appearance_characters` when a client first creates that body's ped (LRU of 2000, concurrent asks share one query) and the client asks for it once per body (`EVENTS.look`), so cell deltas stay small. Model: the look's model, else the freemode model of the character's sex.
+- Ground bodies are lib `LocalPed`s plus a lib `Points` "carry" point. Carried / seated bodies are created in `client/attached.ts` with `CreatePed`: `LocalPed` only stands at a fixed point and cannot attach or sit.
+- Put in / take out are ai-core prompts (`showPrompt`), not `Points`: the vehicle moves, and lib `Points` has no "every vehicle" point. Target users get the prompt too.
+- Waking: ai-core spawns the character at its own saved position (the logout spot); the wake callback then removes the body and either seats the player in the same seat / moves them to the carrier (server, retried 15 s), or hands the body's last position to the client, which teleports there when it is more than 2 m away. ai-core has no export to set an offline character's position, so the original's DB position write is replaced by this teleport.
+- Hidden areas (panel records: ball, cylinder, polygon of picked corners) are server-side: no body is created inside; a ground body inside (put down, or an area drawn later) is filed nowhere, so nobody sees it, but its record stays and the owner still wakes up there.
+- "Ignore private worlds" stands in for the original's tgiann-motel hook: in a routing bucket other than 0 a player leaves no body and the server streams none to them (checked on each cell message).
+- Runtime states are never stored: a restart puts every body on the ground at its last flushed position.
+
+## Contracts
+
+- Events, callbacks, local hook events: `resource/common/events.ts`. Table `ai_exitsleeping_sleepers` (`sql/main.sql`).
+- Server export `AddCreateCheck(id, fn(source, charId, coords) => boolean)`: false leaves no body.
+- Client exports `PlayerLoaded()` (wake mode "export"), `SetHidden(reason, hidden)`, `SetCarryBlocked(reason, blocked)`; reasons are kept per calling resource and dropped when it stops.
+- Calls ai-appearance's client export `ApplyAppearance(ped, look)` (not in ai-appearance yet; without it bodies wear the model's default clothes and a warning is logged once).
+- Panel: `data/settings.json` (`sync: "all"`, read by clients through `AdminWorld`), `data/areas.json` (server only).
+
+## Pitfalls
+
+- `createSleeping` reads the ped and the character before its first await: on a drop the ped is gone right after ai-core's unload event.
+- A body moved across a cell by tracking is only sent to players who newly see it: carried / seated peds render relative to their parent, so the others need no new coordinates.
+- Leaving a private world without changing cell shows the bodies only after the next cell change.
+
+## Entry points
+
+- Server: memory and deltas `resource/server/store.ts` (+ `stream.ts`, `cells.ts`, `watchers.ts`), creation and create checks `create.ts`, client actions `actions.ts`, waking `wake.ts`, lifecycle (unload, tracking, flush, expiry, test command `/exitsleeptest`) `index.ts`.
+- Client: received bodies `client/view.ts`, ground peds and the carry point `ground.ts`, carried / seated peds `attached.ts`, carry session and drop key `carry.ts`, vehicle prompts `vehiclePrompts.ts`, export reasons `rules.ts`.

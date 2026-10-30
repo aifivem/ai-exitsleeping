@@ -1,0 +1,102 @@
+import { isRecord } from "@aicore-fivem/lib/shared";
+
+/** ai-exitsleeping's net contracts and the sleeper view clients get. No natives. */
+
+export const EVENTS = {
+  /** Callback: () -> { ok, coords? } wakes the caller's own sleeping body; `coords` = where the body ended up. */
+  wake: "ai-exitsleeping:wake",
+  /** Client -> server: (cellX, cellY) the player's cell changed (the cells around it follow as a delta). */
+  area: "ai-exitsleeping:area",
+  /** Server -> player: (reset, puts: SleeperView[], removes: charId[]) sleepers entering / leaving the watched cells. */
+  areaDelta: "ai-exitsleeping:client:area",
+  /** Server -> players watching the cell: (view: SleeperView) a sleeper appeared or changed state. */
+  put: "ai-exitsleeping:client:put",
+  /** Server -> players watching the cell: (charId) a sleeper woke, expired or left the cell. */
+  remove: "ai-exitsleeping:client:remove",
+  /** Callback: (charId) -> { ok, look } the saved look of a sleeper the caller sees (fetched once per ped). */
+  look: "ai-exitsleeping:look",
+  /** Client -> server: (charId) pick up a sleeper lying on the ground. */
+  startCarry: "ai-exitsleeping:startCarry",
+  /** Client -> server: () put the carried sleeper down where the carrier stands. */
+  stopCarry: "ai-exitsleeping:stopCarry",
+  /** Client -> server: (vehicleNetId, seat) seat the carried sleeper in a passenger seat. */
+  putInVehicle: "ai-exitsleeping:putInVehicle",
+  /** Client -> server: (vehicleNetId) take a sleeper out of the vehicle (the taker carries it). */
+  takeOut: "ai-exitsleeping:takeOut",
+} as const;
+
+/** Local events other resources may listen to (the original script's editable hooks). */
+export const HOOKS = {
+  /** Client: (ped, view: SleeperView) a sleeping ped was created on this client. */
+  pedSpawned: "ai-exitsleeping:client:pedSpawned",
+  /** Server: (charId, coords: { x, y, z, heading }) a sleeper's position changed (carried, driven, put down). */
+  positionChanged: "ai-exitsleeping:positionChanged",
+  /** Server: (charId, view: SleeperView) a sleeping body was created for a character that logged out. */
+  created: "ai-exitsleeping:created",
+  /** Server: (charId) a sleeping body is gone (woke, expired, toggled off). */
+  removed: "ai-exitsleeping:removed",
+} as const;
+
+/** Bodies are grouped in square cells of this many metres; a player watches the 3x3 cells around their own, so at least one cell (the panel's largest draw distance) around the player is known. */
+export const CELL = 64;
+export const cellOf = (x: number, y: number) => ({
+  cx: Math.floor(x / CELL),
+  cy: Math.floor(y / CELL),
+});
+export const cellKey = (cx: number, cy: number) => `${cx}:${cy}`;
+
+export type SleeperState = "ground" | "carried" | "vehicle";
+
+/** What a client knows of a sleeper; the look is asked separately (EVENTS.look) when its ped is created. */
+export interface SleeperView {
+  id: number;
+  model: string;
+  /** Index into the panel's sleep animations (the same pose on every client). */
+  anim: number;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  state: SleeperState;
+  /** Server id of the carrier (state "carried"), else 0. */
+  carrier: number;
+  /** Vehicle network id and seat (state "vehicle"), else 0. */
+  net: number;
+  seat: number;
+}
+
+const finite = (n: unknown): n is number =>
+  typeof n === "number" && Number.isFinite(n);
+const STATES: readonly unknown[] = ["ground", "carried", "vehicle"];
+
+export function toView(v: unknown): SleeperView | null {
+  if (!isRecord(v)) return null;
+  const { id, model, anim, x, y, z, heading, state, carrier, net, seat } = v;
+  if (
+    !Number.isInteger(id) ||
+    typeof model !== "string" ||
+    !Number.isInteger(anim) ||
+    !finite(x) ||
+    !finite(y) ||
+    !finite(z) ||
+    !finite(heading) ||
+    !STATES.includes(state) ||
+    !Number.isInteger(carrier) ||
+    !Number.isInteger(net) ||
+    !Number.isInteger(seat)
+  )
+    return null;
+  return {
+    id: Number(id),
+    model,
+    anim: Number(anim),
+    x,
+    y,
+    z,
+    heading,
+    state: state as SleeperState,
+    carrier: Number(carrier),
+    net: Number(net),
+    seat: Number(seat),
+  };
+}
