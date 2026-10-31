@@ -1,6 +1,6 @@
 {
   "name": "ai-exitsleeping",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Players who log out stay in the world as a sleeping ped at their last location; others can carry it or put it into a vehicle, and the owner wakes up where the ped ended up.",
   "license": "GPL-3.0-only",
