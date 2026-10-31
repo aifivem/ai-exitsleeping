@@ -1,5 +1,6 @@
 import {
   onCache,
+  onStop,
   registerExport,
   resourceExport,
   triggerServerCallback,
@@ -100,8 +101,7 @@ setTimeout(() => {
     void start();
 }, 1000);
 
-on("onResourceStop", (resource: string) => {
-  if (resource !== ResourceName) return;
+onStop(() => {
   ground.clear();
   attached.clear();
   carry.end();

@@ -3,6 +3,7 @@ import {
   createDatabaseTables,
   every,
   onCharacter,
+  onStop,
   vehicleFromNet,
 } from "@aicore-fivem/lib/server";
 import { Locale, ResourceName } from "common";
@@ -19,6 +20,7 @@ import {
 import { createSleeping } from "./create";
 import { sleepers } from "./store";
 import "./wake";
+import { distance } from "@aicore-fivem/lib/shared";
 
 /** Someone leaves (drop or character switch): a body they carried goes down where they stood, then their own. */
 function onLeft(source: number, charId: number): void {
@@ -52,7 +54,7 @@ function trackMoving(): void {
     // Inside an instance the body keeps its last shared-world position (where it is put down if it ends there).
     if (GetEntityRoutingBucket(entity) !== 0) continue;
     const c = pedCoords(entity);
-    if (Math.hypot(c.x - s.x, c.y - s.y, c.z - s.z) > 1) sleepers.move(s, c);
+    if (distance(c, s) > 1) sleepers.move(s, c);
   }
 }
 
@@ -72,9 +74,7 @@ const flush = (why: string) =>
 every(10_000, () => flush("interval"), { name: "flush" });
 every(600_000, () => sleepers.expire(), { name: "expire" });
 on("txAdmin:events:serverShuttingDown", () => void flush("shutdown"));
-on("onResourceStop", (resource: string) => {
-  if (resource === ResourceName) void flush("resource stop");
-});
+onStop(() => void flush("resource stop"));
 
 createDatabaseTables(ResourceName, "sql/main.sql")
   .then(() => sleepers.load())

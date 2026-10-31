@@ -4,6 +4,7 @@ import { content, core, debug, livePed, log, pedCoords } from "./content";
 import { looks } from "./looks";
 import { Sleeper } from "./sleeper";
 import { sleepers } from "./store";
+import { randomInt } from "@aicore-fivem/lib/shared";
 
 type CreateCheck = (
   source: number,
@@ -48,7 +49,7 @@ export async function createSleeping(
   );
   const look = await looks.get(charId);
   if (leaving && core.GetSourceByCharId(charId) !== null) return;
-  const anim = Math.floor(Math.random() * content.settings.sleepAnims.length);
+  const anim = randomInt(0, content.settings.sleepAnims.length - 1);
   sleepers.add(
     new Sleeper(
       charId,

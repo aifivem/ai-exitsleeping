@@ -70,7 +70,7 @@ const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([va
 }, fail = (error) => ({
 	ok: !1,
 	error
-}), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0;
+}), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), randomInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1)), isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0;
 // ../../../packages/lib/src/shared/zone.ts
 function zoneContains(shape, x, y, z) {
 	switch (shape.type) {
@@ -306,6 +306,8 @@ const CORE = {
 	vehicleTypeCallback: "ai-core:vehicleType",
 	interactionStateKey: "ai:interaction",
 	pvpStateKey: "ai:pvp",
+	medicalStateKey: "ai:medical",
+	clientDeadEvent: "ai-core:client:dead",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
 	deleteCharacterCallback: "ai-core:deleteCharacter",
@@ -1024,6 +1026,9 @@ var OnlinePlayers = class {
 	character(source) {
 		return this.start(), this.players.get(source)?.character ?? null;
 	}
+	charId(source) {
+		return this.start(), this.players.get(source)?.character.id;
+	}
 	name(source, options = {}) {
 		let c = this.character(source);
 		return c ? `${c.firstname} ${c.lastname}` : options.fallback === !1 ? "" : GetPlayerName(String(source));
@@ -1121,19 +1126,19 @@ function onCharacter(handlers) {
 		} catch (error) {
 			log$5.error(`character loaded handler failed for ${source}`, error);
 		}
-	}, end = (source, charId) => {
+	}, end = (source, charId, reason) => {
 		if (live.delete(source)) try {
-			handlers.unloaded?.(source, charId);
+			handlers.unloaded?.(source, charId, reason);
 		} catch (error) {
 			log$5.error(`character unloaded handler failed for ${source}`, error);
 		}
 	};
 	on(CORE.playerLoadedEvent, (source, character) => {
 		let previous = live.get(source);
-		previous !== void 0 && end(source, previous), deliver(source, character);
-	}), on(CORE.playerUnloadedEvent, (source, charId) => end(source, charId)), onDropped((source) => setImmediate(() => {
+		previous !== void 0 && end(source, previous, "switch"), deliver(source, character);
+	}), on(CORE.playerUnloadedEvent, (source, charId, reason) => end(source, charId, reason === "dropped" ? "dropped" : "switch")), onDropped((source) => setImmediate(() => {
 		let charId = live.get(source);
-		charId !== void 0 && end(source, charId);
+		charId !== void 0 && end(source, charId, "dropped");
 	})), setImmediate(() => {
 		for (let source of online.sources()) {
 			if (live.has(source)) continue;
@@ -15810,7 +15815,7 @@ function caller() {
 }
 const stopHandlers = [];
 let listening = !1;
-function onStop(handler) {
+function onAnyStop(handler) {
 	if (stopHandlers.push(handler), listening) return;
 	listening = !0;
 	let event = IsDuplicityVersion() ? "onResourceStop" : "onClientResourceStop";
@@ -15818,12 +15823,18 @@ function onStop(handler) {
 		for (let stop of stopHandlers) stop(resource);
 	});
 }
+function onStop(fn) {
+	let self = GetCurrentResourceName();
+	onAnyStop((resource) => {
+		resource === self && fn();
+	});
+}
 var ByResource = class {
 	options;
 	byOwner = new Map();
 	owners = new Map();
 	constructor(options = {}) {
-		this.options = options, onStop((resource) => this.dropResource(resource));
+		this.options = options, onAnyStop((resource) => this.dropResource(resource));
 	}
 	set(key, value, owner = caller()) {
 		let previous = this.owners.get(key);
@@ -16500,11 +16511,8 @@ const ANIM_SPEC = {
 	content.settings.debug && log.info(message, ...args);
 };
 function pedCoords(ped) {
-	let [x = 0, y = 0, z = 0] = GetEntityCoords(ped);
 	return {
-		x,
-		y,
-		z,
+		...entityCoords(ped),
 		heading: GetEntityHeading(ped)
 	};
 }
@@ -16711,7 +16719,7 @@ const sleepers = new class {
 		return this.dirty.clear(), this.writes.push("positions", () => savePositions(rows)), this.writes.idle();
 	}
 	watch(source, cx, cy) {
-		this.stream.follow(source, cx, cy);
+		this.stream.followReported(source, cx, cy);
 	}
 	unwatch(source, tell) {
 		this.stream.stop(source, tell);
@@ -16744,10 +16752,7 @@ onClientEvent(EVENTS.area, {
 	guards
 }, (source, cx, cy) => {
 	if (content.settings.hideInInstances && GetPlayerRoutingBucket(String(source)) !== 0) return sleepers.unwatch(source, !0);
-	let ped = livePed(source);
-	if (!ped) return;
-	let p = pedCoords(ped), real = gridCell(p.x, p.y, 64);
-	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || sleepers.watch(source, cx, cy);
+	livePed(source) && sleepers.watch(source, cx, cy);
 });
 function readIds(value) {
 	if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
@@ -16846,7 +16851,7 @@ async function createSleeping(source, charId, leaving) {
 	}
 	let fallback = GetHashKey(character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01"), look = await looks.get(charId);
 	if (leaving && core.GetSourceByCharId(charId) !== null) return;
-	let anim = Math.floor(Math.random() * content.settings.sleepAnims.length);
+	let anim = randomInt(0, content.settings.sleepAnims.length - 1);
 	sleepers.add(new Sleeper(charId, look?.model ?? fallback, anim, coords.x, coords.y, coords.z, coords.heading, Date.now()));
 }
 registerExport("AddCreateCheck", (id, check) => {
@@ -16870,7 +16875,7 @@ function warpToCarrier(source, carrier) {
 		let ped = livePed(source), carrierPed = livePed(carrier);
 		if (!ped || !carrierPed) return !0;
 		let to = pedCoords(carrierPed), at = pedCoords(ped);
-		if (Math.hypot(to.x - at.x, to.y - at.y, to.z - at.z) < 10) return !0;
+		if (distance(to, at) < 10) return !0;
 		SetEntityCoords(ped, to.x, to.y, to.z, !1, !1, !1, !1);
 	});
 }
@@ -16914,7 +16919,7 @@ function trackMoving() {
 		}
 		if (GetEntityRoutingBucket(entity) !== 0) continue;
 		let c = pedCoords(entity);
-		Math.hypot(c.x - s.x, c.y - s.y, c.z - s.z) > 1 && sleepers.move(s, c);
+		distance(c, s) > 1 && sleepers.move(s, c);
 	}
 }
 const track = () => every(content.settings.trackSeconds * 1e3, trackMoving, { name: "track" });
@@ -16923,9 +16928,7 @@ panel.onChange("settings", () => {
 	trackJob.stop(), trackJob = track();
 }), panel.onChange("areas", () => sleepers.refreshHidden());
 const flush = (why) => sleepers.flush().catch((error) => log.error(`flush failed (${why})`, error));
-every(1e4, () => flush("interval"), { name: "flush" }), every(6e5, () => sleepers.expire(), { name: "expire" }), on("txAdmin:events:serverShuttingDown", () => void flush("shutdown")), on("onResourceStop", (resource) => {
-	resource === ResourceName && flush("resource stop");
-}), createDatabaseTables(ResourceName, "sql/main.sql").then(() => sleepers.load()).catch((error) => log.error("database setup failed", error)), addCommand("exitsleeptest", {
+every(1e4, () => flush("interval"), { name: "flush" }), every(6e5, () => sleepers.expire(), { name: "expire" }), on("txAdmin:events:serverShuttingDown", () => void flush("shutdown")), onStop(() => void flush("resource stop")), createDatabaseTables(ResourceName, "sql/main.sql").then(() => sleepers.load()).catch((error) => log.error("database setup failed", error)), addCommand("exitsleeptest", {
 	help: Locale("COMMAND_TEST_HELP"),
 	restricted: !0
 }, async (source) => {

@@ -7,12 +7,11 @@ import {
 import {
   distance,
   fail,
-  gridCell,
   oneArg,
   readId,
   readInt,
 } from "@aicore-fivem/lib/shared";
-import { CELL, EVENTS, MAX_LOOKS } from "common/events";
+import { EVENTS, MAX_LOOKS } from "common/events";
 import { content, livePed, pedCoords, worldPed } from "./content";
 import { looks } from "./looks";
 import { sleepers } from "./store";
@@ -45,13 +44,7 @@ onClientEvent(
       GetPlayerRoutingBucket(String(source)) !== 0
     )
       return sleepers.unwatch(source, true);
-    const ped = livePed(source);
-    if (!ped) return;
-    const p = pedCoords(ped);
-    const real = gridCell(p.x, p.y, CELL);
-    // The client's cell may lag one cell behind the server's view of the ped.
-    if (Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1) return;
-    sleepers.watch(source, cx, cy);
+    if (livePed(source)) sleepers.watch(source, cx, cy);
   },
 );
 

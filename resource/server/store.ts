@@ -172,9 +172,9 @@ class Sleepers {
     return this.writes.idle();
   }
 
-  /** A player's cell changed (checked by the caller): bodies of the new cells come, those of the dropped cells go. */
+  /** A player's reported cell (within one cell of the ped, else ignored): bodies of the new cells come, the dropped cells' go. */
   watch(source: number, cx: number, cy: number): void {
-    this.stream.follow(source, cx, cy);
+    this.stream.followReported(source, cx, cy);
   }
 
   /** The player sees no bodies any more (left, or entered a private world). */

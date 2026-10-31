@@ -1,6 +1,5 @@
 import {
   cache,
-  every,
   Keybind,
   keyHints,
   onCache,
@@ -20,10 +19,7 @@ class CarrySession {
   /** Character id of the body carried, 0 when none. */
   active = 0;
   private waiting = false;
-  private readonly job = every(1000, () => this.play(), {
-    active: false,
-    name: "carry",
-  });
+  private hold: { stop(): void } | null = null;
   private readonly listeners: Array<() => void> = [];
 
   onChange(fn: () => void): void {
@@ -51,8 +47,8 @@ class CarrySession {
     if (!this.active) return;
     this.active = 0;
     this.waiting = false;
-    this.job.set(false);
-    player.stopAnim();
+    this.hold?.stop();
+    this.hold = null;
     keyHints.hide("drop");
     for (const fn of this.listeners) fn();
   }
@@ -61,16 +57,9 @@ class CarrySession {
     this.active = id;
     this.waiting = false;
     keyHints.show("drop", { label: Locale("STOP_CARRYING"), keybind: KEYBIND });
-    this.play();
-    // Put the animation back when something interrupts it (a fall, a bump).
-    this.job.set(true);
-    for (const fn of this.listeners) fn();
-  }
-
-  private play(): void {
     const a = content.settings.carrier;
-    if (!IsEntityPlayingAnim(cache.ped, a.dict, a.clip, 3))
-      void player.playAnim(a.dict, a.clip, { flag: a.flags });
+    this.hold = player.holdAnim(a.dict, a.clip, { flag: a.flags });
+    for (const fn of this.listeners) fn();
   }
 }
 

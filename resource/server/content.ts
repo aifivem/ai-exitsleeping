@@ -1,4 +1,8 @@
-import { AdminPanel, resourceExport } from "@aicore-fivem/lib/server";
+import {
+  AdminPanel,
+  entityCoords,
+  resourceExport,
+} from "@aicore-fivem/lib/server";
 import { createLogger, type ZoneShape } from "@aicore-fivem/lib/shared";
 import { ResourceName } from "common";
 import { readArea } from "common/areas";
@@ -28,8 +32,7 @@ export const debug = (message: string, ...args: unknown[]) => {
 };
 
 export function pedCoords(ped: number) {
-  const [x = 0, y = 0, z = 0] = GetEntityCoords(ped);
-  return { x, y, z, heading: GetEntityHeading(ped) };
+  return { ...entityCoords(ped), heading: GetEntityHeading(ped) };
 }
 
 /** The player's ped while it exists, else 0. */

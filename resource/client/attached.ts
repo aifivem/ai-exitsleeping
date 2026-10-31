@@ -1,7 +1,9 @@
 import {
   cache,
+  entityFromNetId,
   every,
   LocalPed,
+  playerPed,
   requestAnimDict,
 } from "@aicore-fivem/lib/client";
 import { HOOKS, type SleeperView } from "common/events";
@@ -78,13 +80,9 @@ class AttachedPeds {
   /** The carrier's ped or the vehicle while it exists on this client. */
   private parentOf(v: SleeperView): number {
     if (v.state === "carried") {
-      if (v.carrier === cache.serverId) return cache.ped;
-      const player = GetPlayerFromServerId(v.carrier);
-      return player === -1 ? 0 : GetPlayerPed(player);
+      return playerPed(v.carrier);
     }
-    if (!NetworkDoesEntityExistWithNetworkId(v.net)) return 0;
-    const veh = NetToVeh(v.net);
-    return veh && DoesEntityExist(veh) ? veh : 0;
+    return entityFromNetId(v.net, 2);
   }
 
   private bound(v: SleeperView, ped: number, parent: number): boolean {

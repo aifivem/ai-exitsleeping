@@ -4,7 +4,7 @@ import {
   onClientCallback,
   vehicleFromNet,
 } from "@aicore-fivem/lib/server";
-import { waitFor } from "@aicore-fivem/lib/shared";
+import { distance, waitFor } from "@aicore-fivem/lib/shared";
 import { EVENTS } from "common/events";
 import { core, debug, livePed, pedCoords } from "./content";
 import { sleepers } from "./store";
@@ -47,7 +47,7 @@ function warpToCarrier(source: number, carrier: number): void {
     if (!ped || !carrierPed) return true;
     const to = pedCoords(carrierPed);
     const at = pedCoords(ped);
-    if (Math.hypot(to.x - at.x, to.y - at.y, to.z - at.z) < 10) return true;
+    if (distance(to, at) < 10) return true;
     SetEntityCoords(ped, to.x, to.y, to.z, false, false, false, false);
     return undefined;
   });
