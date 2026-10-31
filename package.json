@@ -7,7 +7,7 @@
   "author": {
     "name": "TGIANN"
   },
-  "repository": "github:TGIANN/ai-exitsleeping",
+  "repository": "github:aifivem/ai-exitsleeping",
   "type": "module",
   "fxDependencies": [
     "/onesync",
