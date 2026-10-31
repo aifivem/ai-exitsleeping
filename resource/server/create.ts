@@ -1,4 +1,4 @@
-import { registerExport } from "@aicore-fivem/lib/server";
+import { ByResource, registerExport } from "@aicore-fivem/lib/server";
 import { inAnyArea } from "common/areas";
 import { content, core, debug, livePed, log, pedCoords } from "./content";
 import { looks } from "./looks";
@@ -11,8 +11,8 @@ type CreateCheck = (
   coords: { x: number; y: number; z: number; heading: number },
 ) => unknown;
 
-/** Other resources' vetoes on creating a body (the original script's `canCreateSleeping` hook), by id. */
-const checks = new Map<string, { resource: string; run: CreateCheck }>();
+/** Other resources' vetoes on creating a body (the original script's `canCreateSleeping` hook), by id; a stopping resource's go. */
+const checks = new ByResource<string, CreateCheck>();
 
 /**
  * Creates the body of a player at their ped. `leaving`: the character is being unloaded, so a character that is
@@ -35,12 +35,12 @@ export async function createSleeping(
     return debug("no body: private routing bucket", charId);
   if (inAnyArea(content.areas.values(), coords.x, coords.y, coords.z))
     return debug("no body: hidden area", charId);
-  for (const [id, check] of checks) {
+  for (const [id, check] of checks.entries()) {
     try {
-      if (check.run(source, charId, coords) === false)
+      if (check(source, charId, coords) === false)
         return debug(`no body: refused by ${id}`, charId);
     } catch (error) {
-      log.error(`create check ${id} (${check.resource}) failed`, error);
+      log.error(`create check ${id} (${checks.ownerOf(id)}) failed`, error);
     }
   }
   const fallback = GetHashKey(
@@ -70,12 +70,5 @@ export async function createSleeping(
 registerExport("AddCreateCheck", (id: unknown, check: unknown) => {
   // A function from another resource arrives as a callable reference.
   if (typeof id === "string" && id && typeof check === "function")
-    checks.set(id, {
-      resource: GetInvokingResource() ?? "?",
-      run: check as CreateCheck,
-    });
-});
-on("onResourceStop", (resource: string) => {
-  for (const [id, check] of checks)
-    if (check.resource === resource) checks.delete(id);
+    checks.set(id, check as CreateCheck);
 });

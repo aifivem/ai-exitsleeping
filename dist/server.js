@@ -70,7 +70,7 @@ const readId = (value) => readInt(value, 1, 2147483647), oneArg = (read) => ([va
 }, fail = (error) => ({
 	ok: !1,
 	error
-}), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}), distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0;
 // ../../../packages/lib/src/shared/zone.ts
 function zoneContains(shape, x, y, z) {
 	switch (shape.type) {
@@ -316,6 +316,7 @@ const CORE = {
 }, ADMIN = {
 	ace: "ai.admin",
 	openCallback: "ai-core:admin:open",
+	panelDataCallback: "ai-core:admin:panelData",
 	applyCallback: "ai-core:admin:apply",
 	closeEvent: "ai-core:admin:close",
 	showEvent: "ai-core:admin:show",
@@ -792,7 +793,7 @@ var AdminPanel = class {
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
 			count: 4,
 			windowMs: 1e4
 		} }), setImmediate(() => core$15.RegisterAdminPanel(this.resource));
@@ -821,6 +822,27 @@ var AdminPanel = class {
 			schema: this.schema,
 			texts: loadLocaleTexts(),
 			data: clone(Object.fromEntries(this.data))
+		};
+	}
+	summary() {
+		let data = {}, index = {};
+		for (let [file, spec] of Object.entries(this.schema.files)) {
+			let content = this.data.get(file);
+			if (spec.kind !== "records") {
+				data[file] = clone(content ?? {});
+				continue;
+			}
+			let labels = {};
+			for (let [key, record] of Object.entries(content ?? {})) labels[key] = labelOf(record, spec.labelPath) ?? key;
+			index[file] = labels;
+		}
+		return {
+			resource: this.resource,
+			schema: this.schema,
+			texts: loadLocaleTexts(),
+			data,
+			loaded: !1,
+			index
 		};
 	}
 	apply(admin, raw) {
@@ -906,6 +928,15 @@ var AdminPanel = class {
 		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
 	}
 };
+function labelOf(record, path) {
+	if (!path) return null;
+	let at = record;
+	for (let part of path.split(".")) {
+		if (typeof at != "object" || !at) return null;
+		at = at[part];
+	}
+	return typeof at == "string" && at !== "" ? at : null;
+}
 // ../../../packages/lib/src/server/notify.ts
 function notify(source, text, kind = "info", duration) {
 	let notification = {
@@ -1018,6 +1049,20 @@ var OnlinePlayers = class {
 		let duty = this.dutyJob(source);
 		return duty !== null && jobs.includes(duty);
 	}
+	allows(source, rule) {
+		if (isPublic(rule)) return !0;
+		let min = (name) => rule.grades[name] ?? 0;
+		for (let gang of rule.gangs) {
+			let grade = this.gangGrade(source, gang);
+			if (grade !== null && grade >= min(gang)) return !0;
+		}
+		let duty = rule.onDuty ? this.dutyJob(source) : null;
+		for (let job of rule.jobs) {
+			let grade = this.jobGrade(source, job);
+			if (grade !== null && grade >= min(job) && (!rule.onDuty || duty === job)) return !0;
+		}
+		return !1;
+	}
 	countOnDuty(jobs) {
 		this.start();
 		let count = 0;
@@ -1048,9 +1093,9 @@ function vehicleNearPlayer(source, netId, options = {}) {
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/players.ts
 const log$5 = createLogger(GetCurrentResourceName()), dropped = new Set();
-let listening = !1;
+let listening$1 = !1;
 function onDropped(fn) {
-	listening || (listening = !0, on("playerDropped", () => {
+	listening$1 || (listening$1 = !0, on("playerDropped", () => {
 		let source = Number(globalThis.source);
 		for (let handler of dropped) handler(source);
 	})), dropped.add(fn);
@@ -15733,6 +15778,65 @@ async function createDatabaseTables(resource, file) {
 		else for (let [name, definition] of statement.columns) columns.has(name) || (await mysql.query(`ALTER TABLE \`${statement.table}\` ADD COLUMN ${definition}`), log$2.info(`^2added column ${statement.table}.${name}^7 (${resource})`));
 	}
 }
+// ../../../packages/lib/src/fivem/byResource.ts
+function caller() {
+	let invoking = GetInvokingResource();
+	return invoking != null && invoking !== "" ? invoking : GetCurrentResourceName();
+}
+const stopHandlers = [];
+let listening = !1;
+function onStop(handler) {
+	if (stopHandlers.push(handler), listening) return;
+	listening = !0;
+	let event = IsDuplicityVersion() ? "onResourceStop" : "onClientResourceStop";
+	on(event, (resource) => {
+		for (let stop of stopHandlers) stop(resource);
+	});
+}
+var ByResource = class {
+	options;
+	byOwner = new Map();
+	owners = new Map();
+	constructor(options = {}) {
+		this.options = options, onStop((resource) => this.dropResource(resource));
+	}
+	set(key, value, owner = caller()) {
+		let previous = this.owners.get(key);
+		previous !== void 0 && previous !== owner && this.byOwner.get(previous)?.delete(key);
+		let map = this.byOwner.get(owner);
+		map || this.byOwner.set(owner, map = new Map()), map.set(key, value), this.owners.set(key, owner);
+	}
+	get(key) {
+		let owner = this.owners.get(key);
+		return owner === void 0 ? void 0 : this.byOwner.get(owner)?.get(key);
+	}
+	ownerOf(key) {
+		return this.owners.get(key);
+	}
+	delete(key) {
+		let owner = this.owners.get(key);
+		if (owner === void 0) return !1;
+		this.owners.delete(key);
+		let map = this.byOwner.get(owner);
+		return map?.delete(key), map?.size === 0 && this.byOwner.delete(owner), !0;
+	}
+	*values() {
+		for (let map of this.byOwner.values()) yield* map.values();
+	}
+	*entries() {
+		for (let map of this.byOwner.values()) yield* map.entries();
+	}
+	get size() {
+		return this.owners.size;
+	}
+	dropResource(resource) {
+		let map = this.byOwner.get(resource);
+		if (map) {
+			this.byOwner.delete(resource);
+			for (let [key, value] of map) this.owners.delete(key), this.options.onDrop?.(resource, key, value);
+		}
+	}
+};
 let log$1 = null;
 var ScheduledJob = class {
 	interval;
@@ -16703,17 +16807,17 @@ onClientCallback(EVENTS.startCarry, {
 	}, pedCoords(veh)), { ok: !0 });
 });
 // resource/server/create.ts
-const checks = new Map();
+const checks = new ByResource();
 async function createSleeping(source, charId, leaving) {
 	let ped = livePed(source), character = core.GetCharacter(source);
 	if (!ped || !character) return;
 	let coords = pedCoords(ped);
 	if (content.settings.hideInInstances && GetPlayerRoutingBucket(String(source)) !== 0) return debug("no body: private routing bucket", charId);
 	if (inAnyArea(content.areas.values(), coords.x, coords.y, coords.z)) return debug("no body: hidden area", charId);
-	for (let [id, check] of checks) try {
-		if (check.run(source, charId, coords) === !1) return debug(`no body: refused by ${id}`, charId);
+	for (let [id, check] of checks.entries()) try {
+		if (check(source, charId, coords) === !1) return debug(`no body: refused by ${id}`, charId);
 	} catch (error) {
-		log.error(`create check ${id} (${check.resource}) failed`, error);
+		log.error(`create check ${id} (${checks.ownerOf(id)}) failed`, error);
 	}
 	let fallback = GetHashKey(character.sex === "female" ? "mp_f_freemode_01" : "mp_m_freemode_01"), look = await looks.get(charId);
 	if (leaving && core.GetSourceByCharId(charId) !== null) return;
@@ -16721,12 +16825,7 @@ async function createSleeping(source, charId, leaving) {
 	sleepers.add(new Sleeper(charId, look?.model ?? fallback, anim, coords.x, coords.y, coords.z, coords.heading, Date.now()));
 }
 registerExport("AddCreateCheck", (id, check) => {
-	typeof id == "string" && id && typeof check == "function" && checks.set(id, {
-		resource: GetInvokingResource() ?? "?",
-		run: check
-	});
-}), on("onResourceStop", (resource) => {
-	for (let [id, check] of checks) check.resource === resource && checks.delete(id);
+	typeof id == "string" && id && typeof check == "function" && checks.set(id, check);
 });
 function retry(label, step) {
 	let next = 0;

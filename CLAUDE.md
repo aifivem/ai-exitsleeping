@@ -19,8 +19,8 @@ A player who logs out (drop or back to the character screen) stays in the world 
 ## Contracts
 
 - Events, callbacks, local hook events: `resource/common/events.ts`. Table `ai_exitsleeping_sleepers` (`sql/main.sql`).
-- Server export `AddCreateCheck(id, fn(source, charId, coords) => boolean)`: false leaves no body.
-- Client exports `PlayerLoaded()` (wake mode "export"), `SetHidden(reason, hidden)`, `SetCarryBlocked(reason, blocked)`; reasons are kept per calling resource and dropped when it stops.
+- Server export `AddCreateCheck(id, fn(source, charId, coords) => boolean)`: false leaves no body; checks live in a lib `ByResource` (dropped when the adding resource stops).
+- Client exports `PlayerLoaded()` (wake mode "export"), `SetHidden(reason, hidden)`, `SetCarryBlocked(reason, blocked)`; reasons are lib `Reasons` (per calling resource, dropped when it stops).
 - Looks through lib `appearance` (server `get`, client `apply`): `docs/compat/appearance.md`.
 - Panel: `data/settings.json` (`sync: "all"`, read by clients through `AdminWorld`), `data/areas.json` (server only).
 
