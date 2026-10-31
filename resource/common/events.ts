@@ -5,14 +5,10 @@ import { isRecord, readFinite, readId } from "@aicore-fivem/lib/shared";
 export const EVENTS = {
   /** Callback: () -> true once the caller's own sleeping body is gone (the server seats / moves the player when needed). */
   wake: "ai-exitsleeping:wake",
-  /** Client -> server: (cellX, cellY) the player's cell changed (the cells around it follow as a delta). */
+  /** Client -> server: (cellX, cellY) the player's cell changed (lib `AreaFollower`; the cells around it follow as a delta). */
   area: "ai-exitsleeping:area",
-  /** Server -> player: (reset, puts: SleeperView[], removes: charId[]) sleepers entering / leaving the watched cells. */
+  /** Server -> player: (reset, puts: SleeperView[], removes: charId[]) the sleepers around the player (lib `AreaStream`): appeared, changed, woke, left. */
   areaDelta: "ai-exitsleeping:client:area",
-  /** Server -> players watching the cell: (view: SleeperView) a sleeper appeared or changed state. */
-  put: "ai-exitsleeping:client:put",
-  /** Server -> players watching the cell: (charId) a sleeper woke, expired or left the cell. */
-  remove: "ai-exitsleeping:client:remove",
   /** Callback: (charIds, up to MAX_LOOKS) -> (CharacterAppearance | null)[], the saved looks of sleepers the caller sees (fetched once per ped, batched). */
   look: "ai-exitsleeping:look",
   /** Action (ActionResult): (charId) pick up a sleeper lying on the ground. */
@@ -39,11 +35,6 @@ export const HOOKS = {
 
 /** Bodies are grouped in square cells of this many metres; a player watches the 3x3 cells around their own, so at least one cell (the panel's largest draw distance) around the player is known. */
 export const CELL = 64;
-export const cellOf = (x: number, y: number) => ({
-  cx: Math.floor(x / CELL),
-  cy: Math.floor(y / CELL),
-});
-export const cellKey = (cx: number, cy: number) => `${cx}:${cy}`;
 
 export type SleeperState = "ground" | "carried" | "vehicle";
 

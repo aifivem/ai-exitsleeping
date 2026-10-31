@@ -1,34 +1,35 @@
-import { characters, WriteQueue } from "@aicore-fivem/lib/server";
+import { AreaStream, characters, WriteQueue } from "@aicore-fivem/lib/server";
 import { waitFor } from "@aicore-fivem/lib/shared";
 import { inAnyArea } from "common/areas";
-import { cellKey, cellOf, EVENTS, HOOKS } from "common/events";
+import { CELL, EVENTS, HOOKS, type SleeperView } from "common/events";
 import { content, debug, log } from "./content";
 import * as repo from "./db";
-import { CellIndex } from "./cells";
 import { looks } from "./looks";
 import { modelHash, Sleeper, type Coords } from "./sleeper";
-import { AreaStream } from "./stream";
-import { Watchers } from "./watchers";
 
 /**
- * Every sleeping body in memory, filed by 64 m cell. Players get the bodies of the 3x3 cells around them (puts and
- * removes when their cell changes), then only puts and removes for those cells. A carried body always reaches its
- * carrier. Hidden bodies (inside a hidden area) are filed nowhere and reach nobody.
+ * Every sleeping body in memory, streamed by 64 m cell (lib `AreaStream`): players get the bodies of the 3x3 cells
+ * around them, then only puts and removes. A carried body always reaches its carrier (`alsoTo`). Hidden bodies (inside
+ * a hidden area) stay out of the stream and reach nobody.
  */
 class Sleepers {
   private readonly byId = new Map<number, Sleeper>();
-  private readonly cells = new CellIndex();
+  /**
+   * Bodies per area message (a view is ~150 bytes): chunks keep each event small without a latent event, which could
+   * overtake the puts and removes sent after it.
+   */
+  private readonly stream = new AreaStream<Sleeper, SleeperView>({
+    event: EVENTS.areaDelta,
+    view: (s) => s.view(),
+    cellSize: CELL,
+    chunk: 20,
+    alsoTo: (s) => (s.state === "carried" ? s.carrier : undefined),
+  });
   /** Bodies whose position changed since the last flush. */
   private readonly dirty = new Set<Sleeper>();
   /** Bodies that are carried or seated: the tracking loop walks only these. */
   private readonly moving = new Set<Sleeper>();
   private readonly carriers = new Map<number, Sleeper>();
-  private readonly watchers = new Watchers();
-  private readonly stream = new AreaStream(
-    this.byId,
-    this.cells,
-    this.watchers,
-  );
   private readonly writes = new WriteQueue((label, error) =>
     log.error(`database write failed (${label})`, error),
   );
@@ -49,11 +50,11 @@ class Sleepers {
         now - Number(row.age) * 1000,
       );
       this.byId.set(s.charId, s);
-      this.cells.file(s, this.wantedCell(s));
     });
     this.loaded = true;
     log.info(`${this.byId.size} sleeping bodies loaded (${purged} expired)`);
-    this.stream.resendAll();
+    // Players who followed before the load get their area again.
+    this.stream.load([...this.byId.values()].filter((s) => !this.hidden(s)));
   }
 
   ready(): Promise<true> {
@@ -74,7 +75,7 @@ class Sleepers {
 
   /** Whether the body is in a cell this player watches (or the player carries it). */
   visibleTo(s: Sleeper, source: number): boolean {
-    return s.carrier === source || this.watchers.watches(source, s.cell);
+    return this.stream.knows(source, s.charId);
   }
 
   add(s: Sleeper): void {
@@ -100,9 +101,7 @@ class Sleepers {
   remove(charId: number, fromDb = true): void {
     const s = this.byId.get(charId);
     if (!s) return;
-    for (const source of this.recipients(s))
-      emitNet(EVENTS.remove, source, charId);
-    this.cells.unfile(s);
+    this.stream.delete(charId);
     this.track(s, false);
     this.dirty.delete(s);
     this.byId.delete(charId);
@@ -119,29 +118,33 @@ class Sleepers {
     next: Pick<Sleeper, "state" | "carrier" | "net" | "seat">,
     coords?: Coords,
   ): void {
-    const before = this.recipients(s);
     this.track(s, false);
     Object.assign(s, next);
     this.track(s, s.moving);
     if (coords) this.setCoords(s, coords);
-    this.place(s, before);
+    this.place(s);
     // Put down (or dropped by a vanished carrier / vehicle): the owner spawns here next time.
     if (!s.moving) this.saveSpawn(s);
     debug("state", s.charId, s.state);
   }
 
-  /** A moving body's new position (tracking): refiled when it crossed a cell, saved with the next flush. */
+  /**
+   * A moving body's new position (tracking): saved with the next flush; players it reaches only now get it (the
+   * others follow the entity it rides on).
+   */
   move(s: Sleeper, coords: Coords): void {
-    const before = this.recipients(s);
     this.setCoords(s, coords);
-    const key = this.wantedCell(s);
-    if (key !== s.cell) this.place(s, before, false);
+    this.place(s, false);
   }
 
-  /** Hidden areas changed: bodies on the ground are filed or hidden again. */
+  /** Hidden areas changed: bodies on the ground are streamed or hidden again. */
   refreshHidden(): void {
     for (const s of this.byId.values())
-      if (!s.moving && this.wantedCell(s) !== s.cell) this.place(s);
+      if (
+        !s.moving &&
+        this.hidden(s) === (this.stream.get(s.charId) !== undefined)
+      )
+        this.place(s);
   }
 
   /** Bodies older than the panel's days (memory; the table is purged by SQL). */
@@ -169,14 +172,14 @@ class Sleepers {
     return this.writes.idle();
   }
 
-  /** A player's cell changed: bodies of the new cells come, those of the dropped cells go. */
+  /** A player's cell changed (checked by the caller): bodies of the new cells come, those of the dropped cells go. */
   watch(source: number, cx: number, cy: number): void {
-    this.stream.watch(source, cx, cy, this.loaded);
+    this.stream.follow(source, cx, cy);
   }
 
   /** The player sees no bodies any more (left, or entered a private world). */
   unwatch(source: number, tell: boolean): void {
-    this.stream.unwatch(source, tell);
+    this.stream.stop(source, tell);
   }
 
   /** The owner's spawn point follows the body (ai-core writes it once no save holds the character). */
@@ -193,30 +196,15 @@ class Sleepers {
     emit(HOOKS.positionChanged, s.charId, c);
   }
 
-  private wantedCell(s: Sleeper): string {
-    if (!s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z))
-      return "";
-    const { cx, cy } = cellOf(s.x, s.y);
-    return cellKey(cx, cy);
+  /** Inside a hidden area on the ground: reaches nobody. */
+  private hidden(s: Sleeper): boolean {
+    return !s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z);
   }
 
-  /** Files the body where it belongs; players who saw it and no longer do get a remove, the others a put. */
-  private place(s: Sleeper, before = this.recipients(s), put = true): void {
-    const key = this.wantedCell(s);
-    if (key !== s.cell) this.cells.file(s, key);
-    const after = this.recipients(s);
-    for (const source of before)
-      if (!after.has(source)) emitNet(EVENTS.remove, source, s.charId);
-    if (after.size === 0) return;
-    const view = s.view();
-    for (const source of after)
-      if (put || !before.has(source)) emitNet(EVENTS.put, source, view);
-  }
-
-  private recipients(s: Sleeper): Set<number> {
-    const out = new Set(s.cell ? this.watchers.of(s.cell) : []);
-    if (s.state === "carried") out.add(s.carrier);
-    return out;
+  /** Streams the body where it is now (`resend` false: only players it newly reaches get a put), or hides it. */
+  private place(s: Sleeper, resend = true): void {
+    if (this.hidden(s)) this.stream.delete(s.charId);
+    else this.stream.set(s, resend);
   }
 
   private track(s: Sleeper, on: boolean): void {

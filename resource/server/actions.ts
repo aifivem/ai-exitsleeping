@@ -7,11 +7,12 @@ import {
 import {
   distance,
   fail,
+  gridCell,
   oneArg,
   readId,
   readInt,
 } from "@aicore-fivem/lib/shared";
-import { cellOf, EVENTS, MAX_LOOKS } from "common/events";
+import { CELL, EVENTS, MAX_LOOKS } from "common/events";
 import { content, livePed, pedCoords, worldPed } from "./content";
 import { looks } from "./looks";
 import { sleepers } from "./store";
@@ -47,7 +48,7 @@ onClientEvent(
     const ped = livePed(source);
     if (!ped) return;
     const p = pedCoords(ped);
-    const real = cellOf(p.x, p.y);
+    const real = gridCell(p.x, p.y, CELL);
     // The client's cell may lag one cell behind the server's view of the ped.
     if (Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1) return;
     sleepers.watch(source, cx, cy);
@@ -81,7 +82,8 @@ onClientCallback(
   { args: oneArg(readId), guards, lock: true },
   (source, id): ActionResult => {
     const s = sleepers.get(id);
-    if (!s || s.state !== "ground" || !s.cell) return fail("SLEEP_ERR_TAKEN");
+    if (!s || s.state !== "ground" || !sleepers.visibleTo(s, source))
+      return fail("SLEEP_ERR_TAKEN");
     if (sleepers.carriedBy(source)) return fail("SLEEP_ERR_BUSY");
     const ped = worldPed(source);
     if (!ped || GetVehiclePedIsIn(ped, false)) return FAR;

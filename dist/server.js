@@ -180,7 +180,10 @@ const spec = {
 		max,
 		...optional ? { optional } : {}
 	})
-};
+}, OFFSET = 16384, clampCell = (v) => Math.max(-16e3, Math.min(16e3, v)), gridCell = (x, y, size) => ({
+	cx: clampCell(Math.floor(x / size)),
+	cy: clampCell(Math.floor(y / size))
+}), cellKey = (cx, cy) => (clampCell(cx) + OFFSET) * 32768 + (clampCell(cy) + OFFSET);
 // ../../../packages/lib/src/shared/index.ts
 function isRecord(value) {
 	return typeof value == "object" && !!value && !Array.isArray(value);
@@ -303,6 +306,8 @@ const CORE = {
 	clientCancelProgressEvent: "ai-core:client:cancelProgress",
 	clientDefinitionsEvent: "ai-core:client:definitions",
 	vehicleTypeCallback: "ai-core:vehicleType",
+	progressForCallback: "ai-core:progressFor",
+	progressForCancelEvent: "ai-core:client:progressForCancel",
 	interactionStateKey: "ai:interaction",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
@@ -371,7 +376,17 @@ function loadLocaleTexts(resource = GetCurrentResourceName()) {
 	return texts;
 }
 // ../../../packages/lib/src/fivem/callbackNames.ts
-const requestEvent = (name) => `aicore:cb:${name}`, responseEvent = (resource) => `aicore:cbr:${resource}`, core$17 = resourceExport(CORE.resource), log$7 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$17.GetCharacter(source) !== null || "no character loaded", gates = new Set();
+const requestEvent = (name) => `aicore:cb:${name}`, responseEvent = (resource) => `aicore:cbr:${resource}`;
+// ../../../packages/lib/src/server/position.ts
+function entityCoords(entity) {
+	let [x = 0, y = 0, z = 0] = GetEntityCoords(entity);
+	return {
+		x,
+		y,
+		z
+	};
+}
+const coordsOf = (source) => entityCoords(GetPlayerPed(String(source))), core$17 = resourceExport(CORE.resource), log$7 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$17.GetCharacter(source) !== null || "no character loaded", gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -988,10 +1003,10 @@ var OnlinePlayers = class {
 		return this.start(), this.players.get(source)?.gangs.find((m) => m.gang === gang)?.grade ?? null;
 	}
 	jobMembers(job) {
-		return this.start(), this.jobIndex.get(job) ?? EMPTY$2;
+		return this.start(), this.jobIndex.get(job) ?? EMPTY;
 	}
 	gangMembers(gang) {
-		return this.start(), this.gangIndex.get(gang) ?? EMPTY$2;
+		return this.start(), this.gangIndex.get(gang) ?? EMPTY;
 	}
 	dutyJob(source) {
 		return this.start(), this.players.get(source)?.duty ?? null;
@@ -1007,10 +1022,10 @@ var OnlinePlayers = class {
 		return count;
 	}
 	onDutyFor(job) {
-		return this.start(), this.onDuty.get(job) ?? EMPTY$2;
+		return this.start(), this.onDuty.get(job) ?? EMPTY;
 	}
 };
-const EMPTY$2 = new Set(), online = new OnlinePlayers();
+const EMPTY = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/vehicle.ts
 function entityFromNet(netId, type) {
@@ -1037,6 +1052,15 @@ function onDropped(fn) {
 		for (let handler of dropped) handler(source);
 	})), dropped.add(fn);
 }
+var PlayerMap = class extends Map {
+	constructor(options = {}) {
+		super(), onDropped((source) => {
+			if (!this.has(source)) return;
+			let value = this.get(source);
+			this.delete(source), options.onDrop?.(source, value);
+		});
+	}
+};
 function onCharacter(handlers) {
 	let live = new Map(), deliver = (source, character) => {
 		if (live.set(source, character.id), handlers.loaded) try {
@@ -1066,6 +1090,200 @@ function onCharacter(handlers) {
 		}
 	});
 }
+// ../../../packages/lib/src/server/areaStream.ts
+var AreaStream = class {
+	options;
+	items = new Map();
+	cells = new Map();
+	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
+	inCell = new Map();
+	alsoOf = new Map();
+	size_;
+	range;
+	chunk;
+	stale = !1;
+	constructor(options) {
+		this.options = options, this.size_ = options.cellSize ?? 64, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
+	}
+	get size() {
+		return this.items.size;
+	}
+	get(id) {
+		return this.items.get(id)?.item;
+	}
+	*values() {
+		for (let entry of this.items.values()) yield entry.item;
+	}
+	cellOf(x, y) {
+		return gridCell(x, y, this.size_);
+	}
+	countAt(x, y) {
+		let { cx, cy } = this.cellOf(x, y);
+		return this.cells.get(cellKey(cx, cy))?.size ?? 0;
+	}
+	*around(x, y, cells = 1) {
+		let { cx, cy } = this.cellOf(x, y);
+		for (let dx = -cells; dx <= cells; dx++) for (let dy = -cells; dy <= cells; dy++) for (let entry of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) yield entry.item;
+	}
+	set(item, resend = !0) {
+		this.stale && this.followAll();
+		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
+		if (!entry) {
+			let fresh = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
+			let put = [this.options.view(item)];
+			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
+			return;
+		}
+		let before = this.who(entry.cx, entry.cy, entry.also);
+		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
+		let after = this.who(cx, cy, also), gone = [item.id];
+		for (let source of before) after.has(source) || this.send(source, [], gone);
+		let put = [this.options.view(item)];
+		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	}
+	delete(id) {
+		let entry = this.items.get(id);
+		if (!entry) return;
+		this.items.delete(id), this.unfile(entry);
+		let gone = [id];
+		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
+		this.setAlso(entry, void 0);
+	}
+	load(items) {
+		for (let item of items) {
+			let old = this.items.get(item.id);
+			old && (this.unfile(old), this.setAlso(old, void 0));
+			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
+		}
+		for (let [source, f] of this.followers) this.snapshot(source, f);
+	}
+	recipients(id) {
+		let entry = this.items.get(id);
+		return entry ? this.who(entry.cx, entry.cy, entry.also) : new Set();
+	}
+	knows(source, id) {
+		let entry = this.items.get(id);
+		if (!entry) return !1;
+		if (entry.also === source) return !0;
+		let f = this.followers.get(source);
+		return f !== void 0 && Math.abs(f.cx - entry.cx) <= this.range && Math.abs(f.cy - entry.cy) <= this.range;
+	}
+	start(source, at = coordsOf(source)) {
+		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
+		old && this.leave(source, old);
+		let f = {
+			cx,
+			cy
+		};
+		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
+	}
+	follow(source, cx, cy) {
+		let f = this.followers.get(source);
+		if (!f) {
+			let fresh = {
+				cx,
+				cy
+			};
+			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
+		}
+		this.move(source, f, cx, cy);
+	}
+	followReported(source, cx, cy) {
+		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
+		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
+	}
+	followAll() {
+		if (this.items.size === 0) this.stale = !0;
+		else {
+			this.stale = !1;
+			for (let [source, f] of this.followers) {
+				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
+				this.move(source, f, cx, cy);
+			}
+		}
+	}
+	stop(source, tell = !1) {
+		let f = this.followers.get(source);
+		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
+	}
+	following(source) {
+		return this.followers.has(source);
+	}
+	move(source, f, cx, cy) {
+		if (f.cx === cx && f.cy === cy) return;
+		let r = this.range, removes = [], puts = [];
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
+			let ox = f.cx + dx, oy = f.cy + dy;
+			if (Math.abs(ox - cx) > r || Math.abs(oy - cy) > r) for (let entry of this.cells.get(cellKey(ox, oy)) ?? []) entry.also !== source && removes.push(entry.item.id);
+			let nx = cx + dx, ny = cy + dy;
+			if (Math.abs(nx - f.cx) > r || Math.abs(ny - f.cy) > r) for (let entry of this.cells.get(cellKey(nx, ny)) ?? []) entry.also !== source && puts.push(this.options.view(entry.item));
+		}
+		this.leave(source, f), f.cx = cx, f.cy = cy, this.enter(source, f), (puts.length > 0 || removes.length > 0) && this.send(source, puts, removes);
+	}
+	snapshot(source, f) {
+		let puts = [], r = this.range;
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let entry of this.cells.get(cellKey(f.cx + dx, f.cy + dy)) ?? []) puts.push(this.options.view(entry.item));
+		for (let entry of this.alsoOf.get(source) ?? []) (Math.abs(entry.cx - f.cx) > r || Math.abs(entry.cy - f.cy) > r) && puts.push(this.options.view(entry.item));
+		this.emit(source, !0, puts, []);
+	}
+	who(cx, cy, also) {
+		let out = new Set(), r = this.range;
+		for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let source of this.inCell.get(cellKey(cx + dx, cy + dy)) ?? []) out.add(source);
+		return also !== void 0 && out.add(also), out;
+	}
+	send(source, puts, removes) {
+		this.emit(source, !1, puts, removes);
+	}
+	emit(source, reset, puts, removes) {
+		let extra = this.options.extra?.() ?? [], { event } = this.options;
+		emitNet(event, source, reset, puts.slice(0, this.chunk), removes, ...extra);
+		for (let i = this.chunk; i < puts.length; i += this.chunk) emitNet(event, source, !1, puts.slice(i, i + this.chunk), [], ...extra);
+	}
+	setAlso(entry, also) {
+		if (entry.also === also) return;
+		if (entry.also !== void 0) {
+			let set = this.alsoOf.get(entry.also);
+			set?.delete(entry), set?.size === 0 && this.alsoOf.delete(entry.also);
+		}
+		if (entry.also = also, also === void 0) return;
+		let set = this.alsoOf.get(also);
+		set || this.alsoOf.set(also, set = new Set()), set.add(entry);
+	}
+	file(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set || this.cells.set(key, set = new Set()), set.add(entry);
+	}
+	unfile(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
+	}
+	enter(source, f) {
+		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
+		set || this.inCell.set(key, set = new Set()), set.add(source);
+	}
+	leave(source, f) {
+		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
+		set?.delete(source), set?.size === 0 && this.inCell.delete(key);
+	}
+};
+// ../../../packages/lib/src/server/progressFor.ts
+const running = new PlayerMap({ onDrop: (_source, settle) => settle(!1) });
+on(CORE.playerUnloadedEvent, (source) => {
+	let settle = running.get(source);
+	settle && settle(!1);
+});
 // ../../../packages/lib/src/server/command.ts
 const resource$3 = GetCurrentResourceName(), log$4 = createLogger(resource$3);
 let texts = null;
@@ -15680,8 +15898,6 @@ const EVENTS = {
 	wake: "ai-exitsleeping:wake",
 	area: "ai-exitsleeping:area",
 	areaDelta: "ai-exitsleeping:client:area",
-	put: "ai-exitsleeping:client:put",
-	remove: "ai-exitsleeping:client:remove",
 	look: "ai-exitsleeping:look",
 	startCarry: "ai-exitsleeping:startCarry",
 	stopCarry: "ai-exitsleeping:stopCarry",
@@ -15692,10 +15908,7 @@ const EVENTS = {
 	positionChanged: "ai-exitsleeping:positionChanged",
 	created: "ai-exitsleeping:created",
 	removed: "ai-exitsleeping:removed"
-}, cellOf = (x, y) => ({
-	cx: Math.floor(x / 64),
-	cy: Math.floor(y / 64)
-}), cellKey = (cx, cy) => `${cx}:${cy}`, vec3 = (raw) => {
+}, vec3 = (raw) => {
 	let v = record(raw);
 	return {
 		x: num(v.x, 0),
@@ -16237,24 +16450,6 @@ async function savePositions(list) {
 		]));
 	}
 }
-// resource/server/cells.ts
-var CellIndex = class {
-	cells = new Map();
-	file(s, key) {
-		if (this.unfile(s), !key) return;
-		s.cell = key;
-		let set = this.cells.get(key) ?? new Set();
-		set.add(s.charId), this.cells.set(key, set);
-	}
-	unfile(s) {
-		let set = this.cells.get(s.cell);
-		set?.delete(s.charId), set?.size === 0 && this.cells.delete(s.cell), s.cell = "";
-	}
-	ids(key) {
-		return this.cells.get(key) ?? EMPTY$1;
-	}
-};
-const EMPTY$1 = new Set();
 // resource/server/sleeper.ts
 var Sleeper = class {
 	charId;
@@ -16269,9 +16464,11 @@ var Sleeper = class {
 	carrier = 0;
 	net = 0;
 	seat = 0;
-	cell = "";
 	constructor(charId, model, anim, x, y, z, heading, loggedOutAt) {
 		this.charId = charId, this.model = model, this.anim = anim, this.x = x, this.y = y, this.z = z, this.heading = heading, this.loggedOutAt = loggedOutAt;
+	}
+	get id() {
+		return this.charId;
 	}
 	get coords() {
 		return {
@@ -16304,94 +16501,26 @@ function modelHash(stored) {
 	let n = Number(stored);
 	return Number.isInteger(n) && stored.trim() !== "" ? n : GetHashKey(stored);
 }
-var AreaStream = class {
-	byId;
-	cells;
-	watchers;
-	constructor(byId, cells, watchers) {
-		this.byId = byId, this.cells = cells, this.watchers = watchers;
-	}
-	watch(source, cx, cy, loaded) {
-		let { added, dropped, fresh } = this.watchers.set(source, cx, cy);
-		if (!loaded) return;
-		let removes = [];
-		for (let key of dropped) for (let id of this.cells.ids(key)) this.byId.get(id)?.carrier !== source && removes.push(id);
-		this.send(source, fresh, this.viewsIn(added), removes);
-	}
-	unwatch(source, tell) {
-		this.watchers.drop(source) && tell && emitNet(EVENTS.areaDelta, source, !0, [], []);
-	}
-	resendAll() {
-		for (let [source, cells] of this.watchers.sources()) this.send(source, !0, this.viewsIn(cells), []);
-	}
-	viewsIn(cells) {
-		let out = [];
-		for (let key of cells) for (let id of this.cells.ids(key)) {
-			let s = this.byId.get(id);
-			s && out.push(s.view());
-		}
-		return out;
-	}
-	send(source, fresh, puts, removes) {
-		if (fresh || puts.length !== 0 || removes.length !== 0) {
-			emitNet(EVENTS.areaDelta, source, fresh, puts.slice(0, 20), removes);
-			for (let i = 20; i < puts.length; i += 20) emitNet(EVENTS.areaDelta, source, !1, puts.slice(i, i + 20), []);
-		}
-	}
-}, Watchers = class {
-	bySource = new Map();
-	byCell = new Map();
-	set(source, cx, cy) {
-		let next = new Set();
-		for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) next.add(cellKey(cx + dx, cy + dy));
-		let old = this.bySource.get(source), added = [...next].filter((key) => !old?.has(key)), dropped = old ? [...old].filter((key) => !next.has(key)) : [];
-		for (let key of dropped) this.leave(key, source);
-		for (let key of added) {
-			let set = this.byCell.get(key) ?? new Set();
-			set.add(source), this.byCell.set(key, set);
-		}
-		return this.bySource.set(source, next), {
-			added,
-			dropped,
-			fresh: !old
-		};
-	}
-	drop(source) {
-		let old = this.bySource.get(source);
-		if (!old) return !1;
-		for (let key of old) this.leave(key, source);
-		return this.bySource.delete(source), !0;
-	}
-	of(cell) {
-		return this.byCell.get(cell) ?? EMPTY;
-	}
-	sources() {
-		return this.bySource.entries();
-	}
-	watches(source, cell) {
-		return this.bySource.get(source)?.has(cell) ?? !1;
-	}
-	leave(key, source) {
-		let set = this.byCell.get(key);
-		set && (set.delete(source), set.size === 0 && this.byCell.delete(key));
-	}
-};
-const EMPTY = new Set(), sleepers = new class {
+const sleepers = new class {
 	byId = new Map();
-	cells = new CellIndex();
+	stream = new AreaStream({
+		event: EVENTS.areaDelta,
+		view: (s) => s.view(),
+		cellSize: 64,
+		chunk: 20,
+		alsoTo: (s) => s.state === "carried" ? s.carrier : void 0
+	});
 	dirty = new Set();
 	moving = new Set();
 	carriers = new Map();
-	watchers = new Watchers();
-	stream = new AreaStream(this.byId, this.cells, this.watchers);
 	writes = new WriteQueue((label, error) => log.error(`database write failed (${label})`, error));
 	loaded = !1;
 	async load() {
 		let purged = await purgeOlderThan(content.settings.days), now = Date.now();
 		await loadAll((row) => {
 			let s = new Sleeper(row.char_id, modelHash(row.model), row.anim, row.x, row.y, row.z, row.heading, now - Number(row.age) * 1e3);
-			this.byId.set(s.charId, s), this.cells.file(s, this.wantedCell(s));
-		}), this.loaded = !0, log.info(`${this.byId.size} sleeping bodies loaded (${purged} expired)`), this.stream.resendAll();
+			this.byId.set(s.charId, s);
+		}), this.loaded = !0, log.info(`${this.byId.size} sleeping bodies loaded (${purged} expired)`), this.stream.load([...this.byId.values()].filter((s) => !this.hidden(s)));
 	}
 	ready() {
 		return waitFor(() => this.loaded || void 0, !1);
@@ -16406,7 +16535,7 @@ const EMPTY = new Set(), sleepers = new class {
 		return this.moving;
 	}
 	visibleTo(s, source) {
-		return s.carrier === source || this.watchers.watches(source, s.cell);
+		return this.stream.knows(source, s.charId);
 	}
 	add(s) {
 		this.remove(s.charId, !1), this.byId.set(s.charId, s), this.place(s), this.writes.push(`insert ${s.charId}`, () => insertSleeper({
@@ -16421,21 +16550,16 @@ const EMPTY = new Set(), sleepers = new class {
 	}
 	remove(charId, fromDb = !0) {
 		let s = this.byId.get(charId);
-		if (s) {
-			for (let source of this.recipients(s)) emitNet(EVENTS.remove, source, charId);
-			this.cells.unfile(s), this.track(s, !1), this.dirty.delete(s), this.byId.delete(charId), looks.forget(charId), fromDb && this.writes.push(`delete ${charId}`, () => deleteSleeper(charId)), emit(HOOKS.removed, charId), debug("removed", charId);
-		}
+		s && (this.stream.delete(charId), this.track(s, !1), this.dirty.delete(s), this.byId.delete(charId), looks.forget(charId), fromDb && this.writes.push(`delete ${charId}`, () => deleteSleeper(charId)), emit(HOOKS.removed, charId), debug("removed", charId));
 	}
 	setState(s, next, coords) {
-		let before = this.recipients(s);
-		this.track(s, !1), Object.assign(s, next), this.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s, before), s.moving || this.saveSpawn(s), debug("state", s.charId, s.state);
+		this.track(s, !1), Object.assign(s, next), this.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s), s.moving || this.saveSpawn(s), debug("state", s.charId, s.state);
 	}
 	move(s, coords) {
-		let before = this.recipients(s);
-		this.setCoords(s, coords), this.wantedCell(s) !== s.cell && this.place(s, before, !1);
+		this.setCoords(s, coords), this.place(s, !1);
 	}
 	refreshHidden() {
-		for (let s of this.byId.values()) !s.moving && this.wantedCell(s) !== s.cell && this.place(s);
+		for (let s of this.byId.values()) !s.moving && this.hidden(s) === (this.stream.get(s.charId) !== void 0) && this.place(s);
 	}
 	expire() {
 		let limit = Date.now() - content.settings.days * 864e5;
@@ -16455,10 +16579,10 @@ const EMPTY = new Set(), sleepers = new class {
 		return this.dirty.clear(), this.writes.push("positions", () => savePositions(rows)), this.writes.idle();
 	}
 	watch(source, cx, cy) {
-		this.stream.watch(source, cx, cy, this.loaded);
+		this.stream.follow(source, cx, cy);
 	}
 	unwatch(source, tell) {
-		this.stream.unwatch(source, tell);
+		this.stream.stop(source, tell);
 	}
 	saveSpawn(s) {
 		characters.setOfflinePosition(s.charId, s.coords);
@@ -16466,23 +16590,11 @@ const EMPTY = new Set(), sleepers = new class {
 	setCoords(s, c) {
 		s.x = c.x, s.y = c.y, s.z = c.z, s.heading = c.heading, this.dirty.add(s), emit(HOOKS.positionChanged, s.charId, c);
 	}
-	wantedCell(s) {
-		if (!s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z)) return "";
-		let { cx, cy } = cellOf(s.x, s.y);
-		return cellKey(cx, cy);
+	hidden(s) {
+		return !s.moving && inAnyArea(content.areas.values(), s.x, s.y, s.z);
 	}
-	place(s, before = this.recipients(s), put = !0) {
-		let key = this.wantedCell(s);
-		key !== s.cell && this.cells.file(s, key);
-		let after = this.recipients(s);
-		for (let source of before) after.has(source) || emitNet(EVENTS.remove, source, s.charId);
-		if (after.size === 0) return;
-		let view = s.view();
-		for (let source of after) (put || !before.has(source)) && emitNet(EVENTS.put, source, view);
-	}
-	recipients(s) {
-		let out = new Set(s.cell ? this.watchers.of(s.cell) : []);
-		return s.state === "carried" && out.add(s.carrier), out;
+	place(s, resend = !0) {
+		this.hidden(s) ? this.stream.delete(s.charId) : this.stream.set(s, resend);
 	}
 	track(s, on) {
 		on ? this.moving.add(s) : this.moving.delete(s), s.state === "carried" && (on ? this.carriers.set(s.carrier, s) : this.carriers.get(s.carrier) === s && this.carriers.delete(s.carrier));
@@ -16502,7 +16614,7 @@ onClientEvent(EVENTS.area, {
 	if (content.settings.hideInInstances && GetPlayerRoutingBucket(String(source)) !== 0) return sleepers.unwatch(source, !0);
 	let ped = livePed(source);
 	if (!ped) return;
-	let p = pedCoords(ped), real = cellOf(p.x, p.y);
+	let p = pedCoords(ped), real = gridCell(p.x, p.y, 64);
 	Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 || sleepers.watch(source, cx, cy);
 });
 function readIds(value) {
@@ -16528,7 +16640,7 @@ onClientCallback(EVENTS.startCarry, {
 	lock: !0
 }, (source, id) => {
 	let s = sleepers.get(id);
-	if (!s || s.state !== "ground" || !s.cell) return fail("SLEEP_ERR_TAKEN");
+	if (!s || s.state !== "ground" || !sleepers.visibleTo(s, source)) return fail("SLEEP_ERR_TAKEN");
 	if (sleepers.carriedBy(source)) return fail("SLEEP_ERR_BUSY");
 	let ped = worldPed(source);
 	return !ped || GetVehiclePedIsIn(ped, !1) || distance(pedCoords(ped), s) > content.settings.maxActionDistance ? FAR : (sleepers.setState(s, {

@@ -15,8 +15,6 @@ export class Sleeper {
   /** Vehicle network id and seat while seated. */
   net = 0;
   seat = 0;
-  /** The cell key it is filed under; "" while hidden (inside a hidden area). */
-  cell = "";
 
   constructor(
     readonly charId: number,
@@ -30,6 +28,11 @@ export class Sleeper {
     /** Epoch ms of the logout (server clock). */
     readonly loggedOutAt: number,
   ) {}
+
+  /** Its key in the area stream. */
+  get id(): number {
+    return this.charId;
+  }
 
   get coords(): Coords {
     return { x: this.x, y: this.y, z: this.z, heading: this.heading };

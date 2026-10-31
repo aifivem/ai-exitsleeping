@@ -1,6 +1,6 @@
-import { cache, every, onServerEvent } from "@aicore-fivem/lib/client";
-import { asArgs, oneArg, readId } from "@aicore-fivem/lib/shared";
-import { cellOf, EVENTS, toView, type SleeperView } from "common/events";
+import { AreaFollower, onServerEvent } from "@aicore-fivem/lib/client";
+import { readId } from "@aicore-fivem/lib/shared";
+import { CELL, EVENTS, toView, type SleeperView } from "common/events";
 import { looks } from "./looks";
 
 type Listener = {
@@ -17,11 +17,7 @@ class View {
   /** Vehicle network id -> bodies seated in it (take-out prompts). */
   readonly inVehicles = new Map<number, Set<number>>();
   private readonly listeners: Listener[] = [];
-  private cell = "";
-  private readonly job = every(2000, () => this.watchCell(), {
-    active: false,
-    name: "sleeperCell",
-  });
+  private readonly follower = new AreaFollower(EVENTS.area, CELL);
 
   listen(listener: Listener): void {
     this.listeners.push(listener);
@@ -29,24 +25,13 @@ class View {
 
   /** Starts sending the player's cell (after waking). */
   start(): void {
-    this.cell = "";
-    this.watchCell();
-    this.job.set(true);
+    this.follower.start();
   }
 
   /** Stops (character switch): every body goes. */
   stop(): void {
-    this.job.set(false);
+    this.follower.stop();
     this.area(true, [], []);
-  }
-
-  private watchCell(): void {
-    const [x = 0, y = 0] = GetEntityCoords(cache.ped, false);
-    const { cx, cy } = cellOf(x, y);
-    const key = `${cx}:${cy}`;
-    if (key === this.cell) return;
-    this.cell = key;
-    emitNet(EVENTS.area, cx, cy);
   }
 
   area(reset: boolean, puts: SleeperView[], removes: number[]): void {
@@ -102,7 +87,3 @@ onServerEvent(
   },
   (reset, puts, removes) => view.area(reset, puts, removes),
 );
-onServerEvent(EVENTS.put, { args: ([v]) => asArgs(toView(v)) }, (v) =>
-  view.put(v),
-);
-onServerEvent(EVENTS.remove, { args: oneArg(readId) }, (id) => view.remove(id));
