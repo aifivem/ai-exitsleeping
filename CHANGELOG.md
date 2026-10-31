@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.1...v0.1.2) (2026-10-31)
+
+
+### Miscellaneous Chores
+
+* rebuild with the current lib ([6590838](https://github.com/aifivem/ai-exitsleeping/commit/65908386d208049eedff9ba09b6db3faeb92e363))
+
 ## [0.1.1](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.0...v0.1.1) (2026-10-31)
 
 
