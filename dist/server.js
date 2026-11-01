@@ -409,7 +409,7 @@ function entityCoords(entity) {
 		z
 	};
 }
-const coordsOf = (source) => entityCoords(GetPlayerPed(String(source))), core$27 = resourceExport(CORE.resource), log$7 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$27.GetCharacter(source) !== null || "no character loaded", gates = new Set();
+const coordsOf = (source) => entityCoords(GetPlayerPed(String(source))), core$28 = resourceExport(CORE.resource), log$7 = createLogger(GetCurrentResourceName()), hasCharacter = () => (source) => core$28.GetCharacter(source) !== null || "no character loaded", gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -454,7 +454,7 @@ var ClientGate = class {
 	}
 };
 // ../../../packages/lib/src/server/callback.ts
-const log$6 = createLogger(GetCurrentResourceName()), resource$4 = GetCurrentResourceName(), REFUSED = Symbol("refused");
+const log$6 = createLogger(GetCurrentResourceName()), resource$5 = GetCurrentResourceName(), REFUSED = Symbol("refused");
 function onClientCallback(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 20);
 	onNet(requestEvent(name), async (caller, id, ...raw) => {
@@ -471,7 +471,7 @@ function onClientCallback(name, first, second) {
 	});
 }
 const pending$1 = new Map();
-onNet(responseEvent(resource$4), (id, ok, result) => {
+onNet(responseEvent(resource$5), (id, ok, result) => {
 	let entry = typeof id == "number" ? pending$1.get(id) : void 0;
 	entry && entry.source === Number(globalThis.source) && (pending$1.delete(id), clearTimeout(entry.timer), ok === !0 ? entry.resolve(result) : entry.reject(Error("client callback failed")));
 });
@@ -517,7 +517,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$26 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$27 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -531,7 +531,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$26.GetLookupValues(source);
+			list = core$27.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -660,11 +660,7 @@ function applyEdit(data, patch, spec) {
 	}
 	return [spec.kind === "records" ? patch.key : void 0];
 }
-// ../../../packages/lib/src/server/admin/jsonSchema.ts
-const SCHEMA_KEY = {
-	type: "string",
-	description: "This file's JSON Schema (for editors)."
-};
+// ../../../packages/lib/src/server/admin/descriptions.ts
 function langFile(resource) {
 	try {
 		let raw = JSON.parse(LoadResourceFile(resource, "locales/en.json") ?? "{}");
@@ -691,6 +687,11 @@ function describe(schema, file, lang) {
 	for (let tab of schema.tabs) if (tab.file === file) for (let card of tab.cards) collect(card.fields, "", lang, out);
 	return out;
 }
+// ../../../packages/lib/src/server/admin/jsonSchema.ts
+const SCHEMA_KEY = {
+	type: "string",
+	description: "This file's JSON Schema (for editors)."
+};
 function toJson(spec, path, desc) {
 	let description = desc.get(path), base = description ? { description } : {};
 	switch (spec.type) {
@@ -795,27 +796,20 @@ function writeSchema(resource, name, text, log) {
 	let dir = `${GetResourcePath(resource)}/data/schemas`;
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
-// ../../../packages/lib/src/server/admin/panel.ts
-const core$25 = resourceExport(CORE.resource);
-var AdminPanel = class {
+// ../../../packages/lib/src/server/admin/panelFiles.ts
+const core$26 = resourceExport(CORE.resource);
+var PanelFiles = class {
 	schema;
 	data = new Map();
 	dataFiles = new Map();
 	handlers = new Map();
-	rules = new Map();
-	actions = new Map();
 	views = new FileViews((file) => this.get(file));
 	worldChanges = new Map();
 	resource = GetCurrentResourceName();
 	log = createLogger(this.resource);
-	editor = 0;
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
-			count: 4,
-			windowMs: 1e4
-		} }), setImmediate(() => core$25.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -823,17 +817,68 @@ var AdminPanel = class {
 	onChange(file, handler) {
 		this.handlers.set(file, [...this.handlers.get(file) ?? [], handler]);
 	}
-	rule(file, rule) {
-		this.rules.set(file, rule);
-	}
-	onAction(id, handler) {
-		this.actions.set(id, handler);
-	}
 	view(file, read) {
 		return this.views.view(file, read);
 	}
 	records(file, readOne) {
 		return this.views.records(file, readOne);
+	}
+	commit(file, key, value) {
+		let data = this.data.get(file);
+		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
+	}
+	commitAfter(file, key, value) {
+		setImmediate(() => this.commit(file, key, value));
+	}
+	store(patch, spec) {
+		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
+		if (keys.length !== 0) {
+			this.data.set(patch.file, data);
+			for (let key of keys) this.changed(patch.file, key);
+		}
+	}
+	changed(file, key) {
+		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
+		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
+		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
+		if (core$26.AdminPanelChanged({
+			resource: this.resource,
+			file,
+			key,
+			value: clone(value)
+		}), spec?.sync !== "all") return;
+		let changes = this.worldChanges.get(file) ?? {};
+		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
+	}
+	load(name, spec) {
+		if (spec.memory) {
+			this.data.set(name, {});
+			return;
+		}
+		let file = new DataFile(this.resource, name, this.log);
+		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
+		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
+		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
+		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
+	}
+};
+// ../../../packages/lib/src/server/admin/panel.ts
+const core$25 = resourceExport(CORE.resource);
+var AdminPanel = class extends PanelFiles {
+	rules = new Map();
+	actions = new Map();
+	editor = 0;
+	constructor(schema) {
+		super(schema), registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+			count: 4,
+			windowMs: 1e4
+		} }), setImmediate(() => core$25.RegisterAdminPanel(this.resource));
+	}
+	rule(file, rule) {
+		this.rules.set(file, rule);
+	}
+	onAction(id, handler) {
+		this.actions.set(id, handler);
 	}
 	snapshot() {
 		return {
@@ -911,44 +956,6 @@ var AdminPanel = class {
 			};
 		}
 	}
-	commit(file, key, value) {
-		let data = this.data.get(file);
-		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
-	}
-	commitAfter(file, key, value) {
-		setImmediate(() => this.commit(file, key, value));
-	}
-	store(patch, spec) {
-		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
-		if (keys.length !== 0) {
-			this.data.set(patch.file, data);
-			for (let key of keys) this.changed(patch.file, key);
-		}
-	}
-	changed(file, key) {
-		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
-		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
-		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$25.AdminPanelChanged({
-			resource: this.resource,
-			file,
-			key,
-			value: clone(value)
-		}), spec?.sync !== "all") return;
-		let changes = this.worldChanges.get(file) ?? {};
-		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
-	}
-	load(name, spec) {
-		if (spec.memory) {
-			this.data.set(name, {});
-			return;
-		}
-		let file = new DataFile(this.resource, name, this.log);
-		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
-		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
-		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
-		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
-	}
 };
 function labelOf(record, path) {
 	if (!path) return null;
@@ -970,7 +977,7 @@ function notify(source, text, kind = "info", duration, title) {
 	emitNet(LIB_UI.notifyEvent, source, notification);
 }
 resourceExport(CORE.resource);
-// ../../../packages/lib/src/server/online.ts
+// ../../../packages/lib/src/server/online/mirror.ts
 const core$23 = resourceExport(CORE.resource);
 function reindex(index, source, before, after) {
 	for (let name of before) {
@@ -982,7 +989,7 @@ function reindex(index, source, before, after) {
 		set || index.set(name, set = new Set()), set.add(source);
 	}
 }
-var OnlinePlayers = class {
+var OnlineMirror = class {
 	players = new Map();
 	onDuty = new Map();
 	jobIndex = new Map();
@@ -1034,6 +1041,7 @@ var OnlinePlayers = class {
 		let set = this.onDuty.get(job);
 		set || this.onDuty.set(job, set = new Set()), set.add(source);
 	}
+}, OnlinePlayers = class extends OnlineMirror {
 	sources() {
 		return this.start(), this.players.keys();
 	}
@@ -1101,13 +1109,14 @@ var OnlinePlayers = class {
 };
 const EMPTY = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource), resourceExport(CORE.resource);
-// ../../../packages/lib/src/server/vehicle.ts
+// ../../../packages/lib/src/server/netEntity.ts
 function entityFromNet(netId, type) {
 	if (readId(netId) === null) return 0;
 	let entity = NetworkGetEntityFromNetworkId(netId);
 	return !entity || !DoesEntityExist(entity) ? 0 : type === void 0 || GetEntityType(entity) === type ? entity : 0;
 }
 const vehicleFromNet = (netId) => entityFromNet(netId, 2);
+// ../../../packages/lib/src/server/vehicle/nearby.ts
 function vehicleNearPlayer(source, netId, options = {}) {
 	let vehicle = vehicleFromNet(netId);
 	if (!vehicle) return 0;
@@ -1164,22 +1173,13 @@ function onCharacter(handlers) {
 		}
 	});
 }
-// ../../../packages/lib/src/server/areaStream.ts
-var AreaStream = class {
-	options;
+// ../../../packages/lib/src/server/areaStream/grid.ts
+var AreaGrid = class {
 	items = new Map();
 	cells = new Map();
-	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
-	inCell = new Map();
-	alsoOf = new PlayerMap({ onDrop: (_source, entries) => {
-		for (let entry of entries) entry.also = void 0;
-	} });
 	size_;
-	range;
-	chunk;
-	stale = !1;
-	constructor(options) {
-		this.options = options, this.size_ = options.cellSize ?? 64, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
+	constructor(cellSize) {
+		this.size_ = cellSize;
 	}
 	get size() {
 		return this.items.size;
@@ -1201,49 +1201,25 @@ var AreaStream = class {
 		let { cx, cy } = this.cellOf(x, y);
 		for (let dx = -cells; dx <= cells; dx++) for (let dy = -cells; dy <= cells; dy++) for (let entry of this.cells.get(cellKey(cx + dx, cy + dy)) ?? []) yield entry.item;
 	}
-	set(item, resend = !0) {
-		this.stale && this.followAll();
-		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
-		if (!entry) {
-			let fresh = {
-				item,
-				cx,
-				cy,
-				also: void 0
-			};
-			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
-			let put = [this.options.view(item)];
-			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
-			return;
-		}
-		let before = this.who(entry.cx, entry.cy, entry.also);
-		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
-		let after = this.who(cx, cy, also), gone = [item.id];
-		for (let source of before) after.has(source) || this.send(source, [], gone);
-		let put = [this.options.view(item)];
-		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	file(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set || this.cells.set(key, set = new Set()), set.add(entry);
 	}
-	delete(id) {
-		let entry = this.items.get(id);
-		if (!entry) return;
-		this.items.delete(id), this.unfile(entry);
-		let gone = [id];
-		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
-		this.setAlso(entry, void 0);
+	unfile(entry) {
+		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
+		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
 	}
-	load(items) {
-		for (let item of items) {
-			let old = this.items.get(item.id);
-			old && (this.unfile(old), this.setAlso(old, void 0));
-			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
-				item,
-				cx,
-				cy,
-				also: void 0
-			};
-			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
-		}
-		for (let [source, f] of this.followers) this.snapshot(source, f);
+}, AreaFollowers = class extends AreaGrid {
+	options;
+	followers = new PlayerMap({ onDrop: (source, f) => this.leave(source, f) });
+	inCell = new Map();
+	alsoOf = new PlayerMap({ onDrop: (_source, entries) => {
+		for (let entry of entries) entry.also = void 0;
+	} });
+	range;
+	chunk;
+	constructor(options) {
+		super(options.cellSize ?? 64), this.options = options, this.range = options.range ?? 1, this.chunk = options.chunk ?? 50;
 	}
 	recipients(id) {
 		let entry = this.items.get(id);
@@ -1255,44 +1231,6 @@ var AreaStream = class {
 		if (entry.also === source) return !0;
 		let f = this.followers.get(source);
 		return f !== void 0 && Math.abs(f.cx - entry.cx) <= this.range && Math.abs(f.cy - entry.cy) <= this.range;
-	}
-	start(source, at = coordsOf(source)) {
-		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
-		old && this.leave(source, old);
-		let f = {
-			cx,
-			cy
-		};
-		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
-	}
-	follow(source, cx, cy) {
-		let f = this.followers.get(source);
-		if (!f) {
-			let fresh = {
-				cx,
-				cy
-			};
-			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
-		}
-		this.move(source, f, cx, cy);
-	}
-	followReported(source, cx, cy) {
-		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
-		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
-	}
-	followAll() {
-		if (this.items.size === 0) this.stale = !0;
-		else {
-			this.stale = !1;
-			for (let [source, f] of this.followers) {
-				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
-				this.move(source, f, cx, cy);
-			}
-		}
-	}
-	stop(source, tell = !1) {
-		let f = this.followers.get(source);
-		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
 	}
 	following(source) {
 		return this.followers.has(source);
@@ -1337,14 +1275,6 @@ var AreaStream = class {
 		let set = this.alsoOf.get(also);
 		set || this.alsoOf.set(also, set = new Set()), set.add(entry);
 	}
-	file(entry) {
-		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
-		set || this.cells.set(key, set = new Set()), set.add(entry);
-	}
-	unfile(entry) {
-		let key = cellKey(entry.cx, entry.cy), set = this.cells.get(key);
-		set?.delete(entry), set?.size === 0 && this.cells.delete(key);
-	}
 	enter(source, f) {
 		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
 		set || this.inCell.set(key, set = new Set()), set.add(source);
@@ -1352,6 +1282,90 @@ var AreaStream = class {
 	leave(source, f) {
 		let key = cellKey(f.cx, f.cy), set = this.inCell.get(key);
 		set?.delete(source), set?.size === 0 && this.inCell.delete(key);
+	}
+}, AreaStream = class extends AreaFollowers {
+	stale = !1;
+	set(item, resend = !0) {
+		this.stale && this.followAll();
+		let { cx, cy } = this.cellOf(item.x, item.y), also = this.options.alsoTo?.(item), entry = this.items.get(item.id);
+		if (!entry) {
+			let fresh = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, fresh), this.file(fresh), this.setAlso(fresh, also);
+			let put = [this.options.view(item)];
+			for (let source of this.who(cx, cy, also)) this.send(source, put, []);
+			return;
+		}
+		let before = this.who(entry.cx, entry.cy, entry.also);
+		(entry.cx !== cx || entry.cy !== cy) && (this.unfile(entry), entry.cx = cx, entry.cy = cy, this.file(entry)), entry.item = item, this.setAlso(entry, also);
+		let after = this.who(cx, cy, also), gone = [item.id];
+		for (let source of before) after.has(source) || this.send(source, [], gone);
+		let put = [this.options.view(item)];
+		for (let source of after) (resend || !before.has(source)) && this.send(source, put, []);
+	}
+	delete(id) {
+		let entry = this.items.get(id);
+		if (!entry) return;
+		this.items.delete(id), this.unfile(entry);
+		let gone = [id];
+		for (let source of this.who(entry.cx, entry.cy, entry.also)) this.send(source, [], gone);
+		this.setAlso(entry, void 0);
+	}
+	load(items) {
+		for (let item of items) {
+			let old = this.items.get(item.id);
+			old && (this.unfile(old), this.setAlso(old, void 0));
+			let { cx, cy } = this.cellOf(item.x, item.y), entry = {
+				item,
+				cx,
+				cy,
+				also: void 0
+			};
+			this.items.set(item.id, entry), this.file(entry), this.setAlso(entry, this.options.alsoTo?.(item));
+		}
+		for (let [source, f] of this.followers) this.snapshot(source, f);
+	}
+	start(source, at = coordsOf(source)) {
+		let { cx, cy } = this.cellOf(at.x, at.y), old = this.followers.get(source);
+		old && this.leave(source, old);
+		let f = {
+			cx,
+			cy
+		};
+		this.followers.set(source, f), this.enter(source, f), this.snapshot(source, f);
+	}
+	follow(source, cx, cy) {
+		let f = this.followers.get(source);
+		if (!f) {
+			let fresh = {
+				cx,
+				cy
+			};
+			return this.followers.set(source, fresh), this.enter(source, fresh), this.snapshot(source, fresh);
+		}
+		this.move(source, f, cx, cy);
+	}
+	followReported(source, cx, cy) {
+		let p = coordsOf(source), real = this.cellOf(p.x, p.y);
+		return Math.abs(real.cx - cx) > 1 || Math.abs(real.cy - cy) > 1 ? !1 : (this.follow(source, cx, cy), !0);
+	}
+	followAll() {
+		if (this.items.size === 0) this.stale = !0;
+		else {
+			this.stale = !1;
+			for (let [source, f] of this.followers) {
+				let p = coordsOf(source), { cx, cy } = this.cellOf(p.x, p.y);
+				this.move(source, f, cx, cy);
+			}
+		}
+	}
+	stop(source, tell = !1) {
+		let f = this.followers.get(source);
+		f && (this.followers.delete(source), this.leave(source, f), tell && this.emit(source, !0, [], []));
 	}
 };
 // ../../../packages/lib/src/server/progressFor.ts
@@ -1391,8 +1405,7 @@ new class {
 		return def === void 0 && this.gangs.set(name, def = core$19.GetGangDefinition(name) ?? null), def;
 	}
 }();
-// ../../../packages/lib/src/server/command.ts
-const resource$3 = GetCurrentResourceName(), log$4 = createLogger(resource$3);
+const log$4 = createLogger(GetCurrentResourceName());
 let texts = null;
 const t = (key, ...args) => formatText((texts ??= loadLocaleTexts(CORE.resource))[key] ?? key, args);
 function reply(source, text, kind) {
@@ -1458,7 +1471,8 @@ var Command = class {
 		return args;
 	}
 };
-const commands = new class {
+// ../../../packages/lib/src/server/command/commandSet.ts
+const resource$3 = GetCurrentResourceName(), commands = new class {
 	list = [];
 	sent = new Map();
 	announced = 0;
@@ -1484,6 +1498,7 @@ const commands = new class {
 		});
 	}
 }();
+// ../../../packages/lib/src/server/command/addCommand.ts
 function addCommand(name, options, handler) {
 	let names = (Array.isArray(name) ? name : [name]).map((n) => n.toLowerCase());
 	if (names.length === 0) throw Error("addCommand needs a name");
@@ -15901,47 +15916,6 @@ var ByResource = class {
 			for (let [key, value] of map) this.owners.delete(key), this.options.onDrop?.(resource, key, value);
 		}
 	}
-};
-let log$1 = null;
-var ScheduledJob = class {
-	interval;
-	fn;
-	name;
-	gen = 0;
-	active = !1;
-	stopped = !1;
-	quietUntil = 0;
-	skipped = 0;
-	constructor(interval, fn, name) {
-		this.interval = interval, this.fn = fn, this.name = name;
-	}
-	get running() {
-		return this.active;
-	}
-	set(active) {
-		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
-	}
-	stop() {
-		this.set(!1), this.stopped = !0;
-	}
-	call() {
-		try {
-			let result = this.fn();
-			result instanceof Promise && result.catch((error) => this.fail(error));
-		} catch (error) {
-			this.fail(error);
-		}
-	}
-	fail(error) {
-		let now = GetGameTimer();
-		if (now < this.quietUntil) {
-			this.skipped++;
-			return;
-		}
-		this.quietUntil = now + 1e4;
-		let more = this.skipped ? ` (+${this.skipped} more)` : "";
-		this.skipped = 0, log$1 ??= createLogger(GetCurrentResourceName()), log$1.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
-	}
 }, Group = class {
 	interval;
 	jobs = Array(8);
@@ -16028,11 +16002,52 @@ const scheduler = new class {
 		groups.length = kept, this.nextDue = soonest;
 	};
 }();
+let log$1 = null;
+var ScheduledJob = class {
+	interval;
+	fn;
+	name;
+	gen = 0;
+	active = !1;
+	stopped = !1;
+	quietUntil = 0;
+	skipped = 0;
+	constructor(interval, fn, name) {
+		this.interval = interval, this.fn = fn, this.name = name;
+	}
+	get running() {
+		return this.active;
+	}
+	set(active) {
+		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
+	}
+	stop() {
+		this.set(!1), this.stopped = !0;
+	}
+	call() {
+		try {
+			let result = this.fn();
+			result instanceof Promise && result.catch((error) => this.fail(error));
+		} catch (error) {
+			this.fail(error);
+		}
+	}
+	fail(error) {
+		let now = GetGameTimer();
+		if (now < this.quietUntil) {
+			this.skipped++;
+			return;
+		}
+		this.quietUntil = now + 1e4;
+		let more = this.skipped ? ` (+${this.skipped} more)` : "";
+		this.skipped = 0, log$1 ??= createLogger(GetCurrentResourceName()), log$1.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
+	}
+};
 function every(ms, fn, options = {}) {
 	let job = new ScheduledJob(Math.max(0, Math.floor(ms)), fn, options.name ?? (fn.name || "anonymous"));
 	return options.active !== !1 && job.set(!0), job;
 }
-IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+IsDuplicityVersion(), IsDuplicityVersion(), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/appearance.ts
 const core$7 = resourceExport(CORE.resource), appearance = {
 	get: (charId) => new Promise((resolve) => {
@@ -16085,9 +16100,6 @@ var WriteQueue = class {
 		return this.tail;
 	}
 };
-// resource/common/locale.ts
-const Locale = createLocale(), ResourceName = GetCurrentResourceName();
-IsDuplicityVersion();
 // resource/common/events.ts
 const EVENTS = {
 	wake: "ai-exitsleeping:wake",
@@ -16103,7 +16115,10 @@ const EVENTS = {
 	positionChanged: "ai-exitsleeping:positionChanged",
 	created: "ai-exitsleeping:created",
 	removed: "ai-exitsleeping:removed"
-}, vec3 = (raw) => {
+}, Locale = createLocale(), ResourceName = GetCurrentResourceName();
+IsDuplicityVersion();
+// resource/common/areas.ts
+const vec3 = (raw) => {
 	let v = record(raw);
 	return {
 		x: num(v.x, 0),
@@ -16175,44 +16190,8 @@ function readSettings(raw) {
 		debug: bool(v.debug, !1)
 	};
 }
-// resource/server/schema.ts
-const ANIM_SPEC = {
-	type: "object",
-	fields: {
-		dict: {
-			type: "text",
-			min: 1,
-			max: 128
-		},
-		clip: {
-			type: "text",
-			min: 1,
-			max: 128
-		},
-		flags: spec.int(0, 65535)
-	}
-}, animFields = (prefix) => [
-	{
-		widget: "text",
-		path: `${prefix}dict`,
-		label: "ADMIN_F_ANIM_DICT",
-		placeholder: "ADMIN_P_ANIM_DICT"
-	},
-	{
-		widget: "text",
-		path: `${prefix}clip`,
-		label: "ADMIN_F_ANIM_CLIP",
-		placeholder: "ADMIN_P_ANIM_CLIP"
-	},
-	{
-		widget: "number",
-		path: `${prefix}flags`,
-		label: "ADMIN_F_ANIM_FLAGS",
-		hint: "ADMIN_H_ANIM_FLAGS",
-		min: 0,
-		max: 65535
-	}
-], metres = (path, label, hint, min, max) => ({
+// resource/server/schema/metres.ts
+const metres = (path, label, hint, min, max) => ({
 	widget: "number",
 	path,
 	label,
@@ -16221,14 +16200,6 @@ const ANIM_SPEC = {
 	max,
 	step: .5,
 	unit: "m"
-}), offset = (path, label, unit) => ({
-	widget: "number",
-	path: `attach.${path}`,
-	label,
-	min: unit === "m" ? -5 : -360,
-	max: unit === "m" ? 5 : 360,
-	step: unit === "m" ? .01 : .5,
-	unit
 }), SETTINGS_DEFAULTS = {
 	wakeOn: "auto",
 	days: 3,
@@ -16262,297 +16233,341 @@ const ANIM_SPEC = {
 		rz: 5
 	},
 	debug: !1
+}, ANIM_SPEC = {
+	type: "object",
+	fields: {
+		dict: {
+			type: "text",
+			min: 1,
+			max: 128
+		},
+		clip: {
+			type: "text",
+			min: 1,
+			max: 128
+		},
+		flags: spec.int(0, 65535)
+	}
+}, settingsFile = {
+	kind: "settings",
+	sync: "all",
+	defaults: SETTINGS_DEFAULTS,
+	sections: {
+		wakeOn: {
+			type: "enum",
+			values: ["auto", "export"]
+		},
+		days: spec.int(1, 365),
+		spawnDistance: spec.num(5, 60),
+		hideInInstances: { type: "bool" },
+		interactDistance: spec.num(1, 10),
+		maxActionDistance: spec.num(2, 30),
+		trackSeconds: spec.int(1, 60),
+		sleepAnims: {
+			type: "list",
+			min: 1,
+			max: 20,
+			of: ANIM_SPEC
+		},
+		carrier: ANIM_SPEC,
+		carried: ANIM_SPEC,
+		attach: {
+			type: "object",
+			fields: {
+				bone: spec.int(0, 65535),
+				x: spec.num(-5, 5),
+				y: spec.num(-5, 5),
+				z: spec.num(-5, 5),
+				rx: spec.num(-360, 360),
+				ry: spec.num(-360, 360),
+				rz: spec.num(-360, 360)
+			}
+		},
+		debug: { type: "bool" }
+	}
+}, generalTab = {
+	id: "general",
+	file: "settings",
+	icon: "sliders",
+	label: "ADMIN_TAB_GENERAL",
+	desc: "ADMIN_TAB_GENERAL_DESC",
+	cards: [{
+		icon: "user",
+		title: "ADMIN_C_BODIES",
+		desc: "ADMIN_C_BODIES_DESC",
+		fields: [
+			{
+				widget: "number",
+				path: "days",
+				label: "ADMIN_F_DAYS",
+				hint: "ADMIN_H_DAYS",
+				min: 1,
+				max: 365,
+				unit: "d"
+			},
+			metres("spawnDistance", "ADMIN_F_SPAWN_DISTANCE", "ADMIN_H_SPAWN_DISTANCE", 5, 60),
+			{
+				widget: "switch",
+				path: "hideInInstances",
+				label: "ADMIN_F_HIDE_INSTANCES",
+				hint: "ADMIN_H_HIDE_INSTANCES"
+			},
+			{
+				widget: "select",
+				path: "wakeOn",
+				label: "ADMIN_F_WAKE_ON",
+				hint: "ADMIN_H_WAKE_ON",
+				options: [{
+					value: "auto",
+					label: "ADMIN_O_WAKE_AUTO"
+				}, {
+					value: "export",
+					label: "ADMIN_O_WAKE_EXPORT"
+				}]
+			}
+		]
+	}, {
+		icon: "hand-pointer",
+		title: "ADMIN_C_ACTIONS",
+		desc: "ADMIN_C_ACTIONS_DESC",
+		fields: [
+			metres("interactDistance", "ADMIN_F_INTERACT_DISTANCE", "ADMIN_H_INTERACT_DISTANCE", 1, 10),
+			metres("maxActionDistance", "ADMIN_F_MAX_ACTION_DISTANCE", "ADMIN_H_MAX_ACTION_DISTANCE", 2, 30),
+			{
+				widget: "number",
+				path: "trackSeconds",
+				label: "ADMIN_F_TRACK",
+				hint: "ADMIN_H_TRACK",
+				min: 1,
+				max: 60,
+				unit: "s"
+			},
+			{
+				widget: "switch",
+				path: "debug",
+				label: "ADMIN_F_DEBUG",
+				hint: "ADMIN_H_DEBUG"
+			}
+		]
+	}]
+}, offset = (path, label, unit) => ({
+	widget: "number",
+	path: `attach.${path}`,
+	label,
+	min: unit === "m" ? -5 : -360,
+	max: unit === "m" ? 5 : 360,
+	step: unit === "m" ? .01 : .5,
+	unit
+}), animFields = (prefix) => [
+	{
+		widget: "text",
+		path: `${prefix}dict`,
+		label: "ADMIN_F_ANIM_DICT",
+		placeholder: "ADMIN_P_ANIM_DICT"
+	},
+	{
+		widget: "text",
+		path: `${prefix}clip`,
+		label: "ADMIN_F_ANIM_CLIP",
+		placeholder: "ADMIN_P_ANIM_CLIP"
+	},
+	{
+		widget: "number",
+		path: `${prefix}flags`,
+		label: "ADMIN_F_ANIM_FLAGS",
+		hint: "ADMIN_H_ANIM_FLAGS",
+		min: 0,
+		max: 65535
+	}
+], animationsTab = {
+	id: "animations",
+	file: "settings",
+	icon: "people-group",
+	label: "ADMIN_TAB_ANIMS",
+	desc: "ADMIN_TAB_ANIMS_DESC",
+	cards: [
+		{
+			icon: "user",
+			title: "ADMIN_C_SLEEP_ANIMS",
+			desc: "ADMIN_C_SLEEP_ANIMS_DESC",
+			fields: [{
+				widget: "list",
+				path: "sleepAnims",
+				label: "ADMIN_F_SLEEP_ANIMS",
+				addLabel: "ADMIN_ADD_ANIM",
+				max: 20,
+				newRow: { ...SETTINGS_DEFAULTS.sleepAnims[0] },
+				rows: animFields("")
+			}]
+		},
+		{
+			icon: "people-group",
+			title: "ADMIN_C_CARRIER",
+			desc: "ADMIN_C_CARRIER_DESC",
+			fields: animFields("carrier.")
+		},
+		{
+			icon: "people-group",
+			title: "ADMIN_C_CARRIED",
+			desc: "ADMIN_C_CARRIED_DESC",
+			fields: animFields("carried.")
+		},
+		{
+			icon: "hand-pointer",
+			title: "ADMIN_C_ATTACH",
+			desc: "ADMIN_C_ATTACH_DESC",
+			fields: [
+				{
+					widget: "number",
+					path: "attach.bone",
+					label: "ADMIN_F_BONE",
+					hint: "ADMIN_H_BONE",
+					min: 0,
+					max: 65535
+				},
+				offset("x", "ADMIN_F_OFFSET_X", "m"),
+				offset("y", "ADMIN_F_OFFSET_Y", "m"),
+				offset("z", "ADMIN_F_OFFSET_Z", "m"),
+				offset("rx", "ADMIN_F_ROT_X", "°"),
+				offset("ry", "ADMIN_F_ROT_Y", "°"),
+				offset("rz", "ADMIN_F_ROT_Z", "°")
+			]
+		}
+	]
+}, areasFile = {
+	kind: "records",
+	sync: "admin",
+	labelPath: "label",
+	newRecord: {
+		label: "",
+		shape: "sphere",
+		center: {
+			x: 0,
+			y: 0,
+			z: 0
+		},
+		radius: 25,
+		height: 10,
+		corners: []
+	},
+	sections: {
+		label: {
+			type: "text",
+			min: 1,
+			max: 48
+		},
+		shape: {
+			type: "enum",
+			values: [
+				"sphere",
+				"cylinder",
+				"poly"
+			]
+		},
+		center: { type: "vec3" },
+		radius: spec.num(1, 2e3),
+		height: spec.num(.5, 1e3),
+		corners: {
+			type: "list",
+			max: 64,
+			of: { type: "vec3" }
+		}
+	}
+}, areasTab = {
+	id: "areas",
+	file: "areas",
+	icon: "map-location-dot",
+	label: "ADMIN_TAB_AREAS",
+	desc: "ADMIN_TAB_AREAS_DESC",
+	createLabel: "ADMIN_NEW_AREA",
+	deleteLabel: "ADMIN_DELETE_AREA",
+	deleteDesc: "ADMIN_DELETE_AREA_DESC",
+	listSub: "shape",
+	cards: [{
+		icon: "map-location-dot",
+		title: "ADMIN_C_AREA",
+		desc: "ADMIN_C_AREA_DESC",
+		fields: [
+			{
+				widget: "text",
+				path: "label",
+				label: "ADMIN_F_LABEL",
+				placeholder: "ADMIN_P_LABEL",
+				suggest: { from: "center" }
+			},
+			{
+				widget: "select",
+				path: "shape",
+				label: "ADMIN_F_SHAPE",
+				hint: "ADMIN_H_SHAPE",
+				options: [
+					{
+						value: "sphere",
+						label: "ADMIN_O_SPHERE"
+					},
+					{
+						value: "cylinder",
+						label: "ADMIN_O_CYLINDER"
+					},
+					{
+						value: "poly",
+						label: "ADMIN_O_POLY"
+					}
+				]
+			},
+			{
+				widget: "point",
+				path: "center",
+				label: "ADMIN_F_CENTER",
+				hint: "ADMIN_H_CENTER",
+				showIf: {
+					path: "shape",
+					values: ["sphere", "cylinder"]
+				}
+			},
+			{
+				...metres("radius", "ADMIN_F_RADIUS", "ADMIN_H_RADIUS", 1, 2e3),
+				showIf: {
+					path: "shape",
+					values: ["sphere", "cylinder"]
+				}
+			},
+			{
+				...metres("height", "ADMIN_F_HEIGHT", "ADMIN_H_HEIGHT", .5, 1e3),
+				showIf: {
+					path: "shape",
+					values: ["cylinder", "poly"]
+				}
+			}
+		]
+	}, {
+		icon: "location-dot",
+		title: "ADMIN_C_CORNERS",
+		desc: "ADMIN_C_CORNERS_DESC",
+		fields: [{
+			widget: "zone",
+			path: "corners",
+			label: "ADMIN_F_CORNERS",
+			hint: "ADMIN_H_CORNERS",
+			heightPath: "height",
+			max: 64,
+			showIf: {
+				path: "shape",
+				values: ["poly"]
+			}
+		}]
+	}]
 }, exitSleepingSchema = {
 	title: "ADMIN_TITLE",
 	icon: "user",
 	files: {
-		settings: {
-			kind: "settings",
-			sync: "all",
-			defaults: SETTINGS_DEFAULTS,
-			sections: {
-				wakeOn: {
-					type: "enum",
-					values: ["auto", "export"]
-				},
-				days: spec.int(1, 365),
-				spawnDistance: spec.num(5, 60),
-				hideInInstances: { type: "bool" },
-				interactDistance: spec.num(1, 10),
-				maxActionDistance: spec.num(2, 30),
-				trackSeconds: spec.int(1, 60),
-				sleepAnims: {
-					type: "list",
-					min: 1,
-					max: 20,
-					of: ANIM_SPEC
-				},
-				carrier: ANIM_SPEC,
-				carried: ANIM_SPEC,
-				attach: {
-					type: "object",
-					fields: {
-						bone: spec.int(0, 65535),
-						x: spec.num(-5, 5),
-						y: spec.num(-5, 5),
-						z: spec.num(-5, 5),
-						rx: spec.num(-360, 360),
-						ry: spec.num(-360, 360),
-						rz: spec.num(-360, 360)
-					}
-				},
-				debug: { type: "bool" }
-			}
-		},
-		areas: {
-			kind: "records",
-			sync: "admin",
-			labelPath: "label",
-			newRecord: {
-				label: "",
-				shape: "sphere",
-				center: {
-					x: 0,
-					y: 0,
-					z: 0
-				},
-				radius: 25,
-				height: 10,
-				corners: []
-			},
-			sections: {
-				label: {
-					type: "text",
-					min: 1,
-					max: 48
-				},
-				shape: {
-					type: "enum",
-					values: [
-						"sphere",
-						"cylinder",
-						"poly"
-					]
-				},
-				center: { type: "vec3" },
-				radius: spec.num(1, 2e3),
-				height: spec.num(.5, 1e3),
-				corners: {
-					type: "list",
-					max: 64,
-					of: { type: "vec3" }
-				}
-			}
-		}
+		settings: settingsFile,
+		areas: areasFile
 	},
 	tabs: [
-		{
-			id: "general",
-			file: "settings",
-			icon: "sliders",
-			label: "ADMIN_TAB_GENERAL",
-			desc: "ADMIN_TAB_GENERAL_DESC",
-			cards: [{
-				icon: "user",
-				title: "ADMIN_C_BODIES",
-				desc: "ADMIN_C_BODIES_DESC",
-				fields: [
-					{
-						widget: "number",
-						path: "days",
-						label: "ADMIN_F_DAYS",
-						hint: "ADMIN_H_DAYS",
-						min: 1,
-						max: 365,
-						unit: "d"
-					},
-					metres("spawnDistance", "ADMIN_F_SPAWN_DISTANCE", "ADMIN_H_SPAWN_DISTANCE", 5, 60),
-					{
-						widget: "switch",
-						path: "hideInInstances",
-						label: "ADMIN_F_HIDE_INSTANCES",
-						hint: "ADMIN_H_HIDE_INSTANCES"
-					},
-					{
-						widget: "select",
-						path: "wakeOn",
-						label: "ADMIN_F_WAKE_ON",
-						hint: "ADMIN_H_WAKE_ON",
-						options: [{
-							value: "auto",
-							label: "ADMIN_O_WAKE_AUTO"
-						}, {
-							value: "export",
-							label: "ADMIN_O_WAKE_EXPORT"
-						}]
-					}
-				]
-			}, {
-				icon: "hand-pointer",
-				title: "ADMIN_C_ACTIONS",
-				desc: "ADMIN_C_ACTIONS_DESC",
-				fields: [
-					metres("interactDistance", "ADMIN_F_INTERACT_DISTANCE", "ADMIN_H_INTERACT_DISTANCE", 1, 10),
-					metres("maxActionDistance", "ADMIN_F_MAX_ACTION_DISTANCE", "ADMIN_H_MAX_ACTION_DISTANCE", 2, 30),
-					{
-						widget: "number",
-						path: "trackSeconds",
-						label: "ADMIN_F_TRACK",
-						hint: "ADMIN_H_TRACK",
-						min: 1,
-						max: 60,
-						unit: "s"
-					},
-					{
-						widget: "switch",
-						path: "debug",
-						label: "ADMIN_F_DEBUG",
-						hint: "ADMIN_H_DEBUG"
-					}
-				]
-			}]
-		},
-		{
-			id: "animations",
-			file: "settings",
-			icon: "people-group",
-			label: "ADMIN_TAB_ANIMS",
-			desc: "ADMIN_TAB_ANIMS_DESC",
-			cards: [
-				{
-					icon: "user",
-					title: "ADMIN_C_SLEEP_ANIMS",
-					desc: "ADMIN_C_SLEEP_ANIMS_DESC",
-					fields: [{
-						widget: "list",
-						path: "sleepAnims",
-						label: "ADMIN_F_SLEEP_ANIMS",
-						addLabel: "ADMIN_ADD_ANIM",
-						max: 20,
-						newRow: { ...SETTINGS_DEFAULTS.sleepAnims[0] },
-						rows: animFields("")
-					}]
-				},
-				{
-					icon: "people-group",
-					title: "ADMIN_C_CARRIER",
-					desc: "ADMIN_C_CARRIER_DESC",
-					fields: animFields("carrier.")
-				},
-				{
-					icon: "people-group",
-					title: "ADMIN_C_CARRIED",
-					desc: "ADMIN_C_CARRIED_DESC",
-					fields: animFields("carried.")
-				},
-				{
-					icon: "hand-pointer",
-					title: "ADMIN_C_ATTACH",
-					desc: "ADMIN_C_ATTACH_DESC",
-					fields: [
-						{
-							widget: "number",
-							path: "attach.bone",
-							label: "ADMIN_F_BONE",
-							hint: "ADMIN_H_BONE",
-							min: 0,
-							max: 65535
-						},
-						offset("x", "ADMIN_F_OFFSET_X", "m"),
-						offset("y", "ADMIN_F_OFFSET_Y", "m"),
-						offset("z", "ADMIN_F_OFFSET_Z", "m"),
-						offset("rx", "ADMIN_F_ROT_X", "°"),
-						offset("ry", "ADMIN_F_ROT_Y", "°"),
-						offset("rz", "ADMIN_F_ROT_Z", "°")
-					]
-				}
-			]
-		},
-		{
-			id: "areas",
-			file: "areas",
-			icon: "map-location-dot",
-			label: "ADMIN_TAB_AREAS",
-			desc: "ADMIN_TAB_AREAS_DESC",
-			createLabel: "ADMIN_NEW_AREA",
-			deleteLabel: "ADMIN_DELETE_AREA",
-			deleteDesc: "ADMIN_DELETE_AREA_DESC",
-			listSub: "shape",
-			cards: [{
-				icon: "map-location-dot",
-				title: "ADMIN_C_AREA",
-				desc: "ADMIN_C_AREA_DESC",
-				fields: [
-					{
-						widget: "text",
-						path: "label",
-						label: "ADMIN_F_LABEL",
-						placeholder: "ADMIN_P_LABEL",
-						suggest: { from: "center" }
-					},
-					{
-						widget: "select",
-						path: "shape",
-						label: "ADMIN_F_SHAPE",
-						hint: "ADMIN_H_SHAPE",
-						options: [
-							{
-								value: "sphere",
-								label: "ADMIN_O_SPHERE"
-							},
-							{
-								value: "cylinder",
-								label: "ADMIN_O_CYLINDER"
-							},
-							{
-								value: "poly",
-								label: "ADMIN_O_POLY"
-							}
-						]
-					},
-					{
-						widget: "point",
-						path: "center",
-						label: "ADMIN_F_CENTER",
-						hint: "ADMIN_H_CENTER",
-						showIf: {
-							path: "shape",
-							values: ["sphere", "cylinder"]
-						}
-					},
-					{
-						...metres("radius", "ADMIN_F_RADIUS", "ADMIN_H_RADIUS", 1, 2e3),
-						showIf: {
-							path: "shape",
-							values: ["sphere", "cylinder"]
-						}
-					},
-					{
-						...metres("height", "ADMIN_F_HEIGHT", "ADMIN_H_HEIGHT", .5, 1e3),
-						showIf: {
-							path: "shape",
-							values: ["cylinder", "poly"]
-						}
-					}
-				]
-			}, {
-				icon: "location-dot",
-				title: "ADMIN_C_CORNERS",
-				desc: "ADMIN_C_CORNERS_DESC",
-				fields: [{
-					widget: "zone",
-					path: "corners",
-					label: "ADMIN_F_CORNERS",
-					hint: "ADMIN_H_CORNERS",
-					heightPath: "height",
-					max: 64,
-					showIf: {
-						path: "shape",
-						values: ["poly"]
-					}
-				}]
-			}]
-		}
+		generalTab,
+		animationsTab,
+		areasTab
 	]
 }, core = resourceExport("ai-core"), log = createLogger(ResourceName), panel = new AdminPanel(exitSleepingSchema), settings = panel.view("settings", readSettings), content = {
 	get settings() {
@@ -16642,8 +16657,20 @@ async function savePositions(list) {
 		]));
 	}
 }
-// resource/server/sleeper.ts
-var Sleeper = class {
+// resource/server/movingBodies.ts
+var MovingBodies = class {
+	moving = new Set();
+	carriers = new Map();
+	carriedBy(source) {
+		return this.carriers.get(source);
+	}
+	all() {
+		return this.moving;
+	}
+	track(s, on) {
+		on ? this.moving.add(s) : this.moving.delete(s), s.state === "carried" && (on ? this.carriers.set(s.carrier, s) : this.carriers.get(s.carrier) === s && this.carriers.delete(s.carrier));
+	}
+}, Sleeper = class {
 	charId;
 	model;
 	anim;
@@ -16693,24 +16720,27 @@ function modelHash(stored) {
 	let n = Number(stored);
 	return Number.isInteger(n) && stored.trim() !== "" ? n : GetHashKey(stored);
 }
-const sleepers = new class {
+function sleeperFromRow(row, now) {
+	return new Sleeper(row.char_id, modelHash(row.model), row.anim, row.x, row.y, row.z, row.heading, now - Number(row.age) * 1e3);
+}
+// resource/server/sleeperStream.ts
+const sleeperStream = () => new AreaStream({
+	event: EVENTS.areaDelta,
+	view: (s) => s.view(),
+	cellSize: 64,
+	chunk: 20,
+	alsoTo: (s) => s.state === "carried" ? s.carrier : void 0
+}), sleepers = new class {
 	byId = new Map();
-	stream = new AreaStream({
-		event: EVENTS.areaDelta,
-		view: (s) => s.view(),
-		cellSize: 64,
-		chunk: 20,
-		alsoTo: (s) => s.state === "carried" ? s.carrier : void 0
-	});
+	stream = sleeperStream();
 	dirty = new Set();
-	moving = new Set();
-	carriers = new Map();
+	moving = new MovingBodies();
 	writes = new WriteQueue((label, error) => log.error(`database write failed (${label})`, error));
 	loaded = !1;
 	async load() {
 		let purged = await purgeOlderThan(content.settings.days), now = Date.now();
 		await loadAll((row) => {
-			let s = new Sleeper(row.char_id, modelHash(row.model), row.anim, row.x, row.y, row.z, row.heading, now - Number(row.age) * 1e3);
+			let s = sleeperFromRow(row, now);
 			this.byId.set(s.charId, s);
 		}), this.loaded = !0, log.info(`${this.byId.size} sleeping bodies loaded (${purged} expired)`), this.stream.load([...this.byId.values()].filter((s) => !this.hidden(s)));
 	}
@@ -16721,10 +16751,10 @@ const sleepers = new class {
 		return this.byId.get(charId);
 	}
 	carriedBy(source) {
-		return this.carriers.get(source);
+		return this.moving.carriedBy(source);
 	}
 	movingBodies() {
-		return this.moving;
+		return this.moving.all();
 	}
 	visibleTo(s, source) {
 		return this.stream.knows(source, s.charId);
@@ -16742,10 +16772,10 @@ const sleepers = new class {
 	}
 	remove(charId, fromDb = !0) {
 		let s = this.byId.get(charId);
-		s && (this.stream.delete(charId), this.track(s, !1), this.dirty.delete(s), this.byId.delete(charId), looks.forget(charId), fromDb && this.writes.push(`delete ${charId}`, () => deleteSleeper(charId)), emit(HOOKS.removed, charId), debug("removed", charId));
+		s && (this.stream.delete(charId), this.moving.track(s, !1), this.dirty.delete(s), this.byId.delete(charId), looks.forget(charId), fromDb && this.writes.push(`delete ${charId}`, () => deleteSleeper(charId)), emit(HOOKS.removed, charId), debug("removed", charId));
 	}
 	setState(s, next, coords) {
-		this.track(s, !1), Object.assign(s, next), this.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s), s.moving || this.saveSpawn(s), debug("state", s.charId, s.state);
+		this.moving.track(s, !1), Object.assign(s, next), this.moving.track(s, s.moving), coords && this.setCoords(s, coords), this.place(s), s.moving || this.saveSpawn(s), debug("state", s.charId, s.state);
 	}
 	move(s, coords) {
 		this.setCoords(s, coords), this.place(s, !1);
@@ -16787,9 +16817,6 @@ const sleepers = new class {
 	}
 	place(s, resend = !0) {
 		this.hidden(s) ? this.stream.delete(s.charId) : this.stream.set(s, resend);
-	}
-	track(s, on) {
-		on ? this.moving.add(s) : this.moving.delete(s), s.state === "carried" && (on ? this.carriers.set(s.carrier, s) : this.carriers.get(s.carrier) === s && this.carriers.delete(s.carrier));
 	}
 }(), guards = [hasCharacter()], vehicleNear = (source, net) => vehicleNearPlayer(source, net, { metres: content.settings.maxActionDistance + 2 });
 onClientEvent(EVENTS.area, {
@@ -16942,7 +16969,7 @@ onClientCallback(EVENTS.wake, (source) => wake(source), {
 	guards: [hasCharacter()],
 	lock: !0
 });
-// resource/server/index.ts
+// resource/server/lifecycle/leave.ts
 function onLeft(source, charId) {
 	let carried = sleepers.carriedBy(source);
 	if (carried) {
@@ -16956,7 +16983,7 @@ function onLeft(source, charId) {
 	}
 	sleepers.unwatch(source, !1), createSleeping(source, charId, !0).catch((error) => log.error(`body of character ${charId} could not be created`, error));
 }
-onCharacter({ unloaded: onLeft });
+// resource/server/lifecycle/tracking.ts
 function trackMoving() {
 	for (let s of sleepers.movingBodies()) {
 		let entity = s.state === "vehicle" ? vehicleFromNet(s.net) : livePed(s.carrier);
@@ -16974,6 +17001,8 @@ function trackMoving() {
 		distance(c, s) > 1 && sleepers.move(s, c);
 	}
 }
+// resource/server/lifecycle/index.ts
+onCharacter({ unloaded: onLeft });
 const track = () => every(content.settings.trackSeconds * 1e3, trackMoving, { name: "track" });
 let trackJob = track();
 panel.onChange("settings", () => {

@@ -1,4 +1,5 @@
 import type { SleeperState, SleeperView } from "common/events";
+import type { StoredSleeper } from "./db";
 
 export interface Coords {
   x: number;
@@ -63,4 +64,18 @@ export class Sleeper {
 export function modelHash(stored: string): number {
   const n = Number(stored);
   return Number.isInteger(n) && stored.trim() !== "" ? n : GetHashKey(stored);
+}
+
+/** A body from its table row; `now` is the load time its age counts back from. */
+export function sleeperFromRow(row: StoredSleeper, now: number): Sleeper {
+  return new Sleeper(
+    row.char_id,
+    modelHash(row.model),
+    row.anim,
+    row.x,
+    row.y,
+    row.z,
+    row.heading,
+    now - Number(row.age) * 1000,
+  );
 }

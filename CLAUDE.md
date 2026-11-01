@@ -34,6 +34,6 @@ A player who logs out (drop or back to the character screen) stays in the world 
 
 ## Entry points
 
-- Server: memory and deltas `resource/server/store.ts`, creation and create checks `create.ts`, client actions `actions.ts`, waking `wake.ts`, lifecycle (unload, tracking, flush, expiry, test command `/exitsleeptest`) `index.ts`.
-- Client: received bodies `client/view.ts`, ground peds and the carry point `ground.ts`, carried / seated peds `attached.ts`, carry session and drop key `carry.ts`, vehicle points `vehiclePrompts.ts`, export reasons `rules.ts`.
+- Server: memory and deltas `resource/server/store.ts` (its area stream `sleeperStream.ts`, carried / seated index `movingBodies.ts`, a body and its row `sleeper.ts`), creation and create checks `create.ts`, client actions `actions.ts`, waking `wake.ts`, lifecycle (unload, tracking, flush, expiry, test command `/exitsleeptest`) `lifecycle/index.ts` (leaving `lifecycle/leave.ts`, following carriers and vehicles `lifecycle/tracking.ts`); panel `content.ts` + `schema/` (one file per tab, `index.ts` puts them together).
+- Client: waking and the `PlayerLoaded` export `client/wake.ts`, bodies on screen (render, rebuild, listeners) `client/bodies.ts`, received bodies `client/view.ts`, ground peds and the carry point `ground.ts`, carried / seated peds `attached.ts`, carry session and drop key `carry.ts`, vehicle points `vehiclePrompts.ts`, export reasons `rules.ts`.
 - Bench: `bench/store.bench.ts` (`bun run bench`).

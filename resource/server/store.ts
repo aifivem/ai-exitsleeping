@@ -1,11 +1,13 @@
-import { AreaStream, characters, WriteQueue } from "@aicore-fivem/lib/server";
+import { characters, WriteQueue } from "@aicore-fivem/lib/server";
 import { waitFor } from "@aicore-fivem/lib/shared";
 import { inAnyArea } from "common/areas";
-import { CELL, EVENTS, HOOKS, type SleeperView } from "common/events";
+import { HOOKS } from "common/events";
 import { content, debug, log } from "./content";
 import * as repo from "./db";
 import { looks } from "./looks";
-import { modelHash, Sleeper, type Coords } from "./sleeper";
+import { MovingBodies } from "./movingBodies";
+import { sleeperFromRow, type Coords, type Sleeper } from "./sleeper";
+import { sleeperStream } from "./sleeperStream";
 
 /**
  * Every sleeping body in memory, streamed by 64 m cell (lib `AreaStream`): players get the bodies of the 3x3 cells
@@ -14,22 +16,10 @@ import { modelHash, Sleeper, type Coords } from "./sleeper";
  */
 class Sleepers {
   private readonly byId = new Map<number, Sleeper>();
-  /**
-   * Bodies per area message (a view is ~150 bytes): chunks keep each event small without a latent event, which could
-   * overtake the puts and removes sent after it.
-   */
-  private readonly stream = new AreaStream<Sleeper, SleeperView>({
-    event: EVENTS.areaDelta,
-    view: (s) => s.view(),
-    cellSize: CELL,
-    chunk: 20,
-    alsoTo: (s) => (s.state === "carried" ? s.carrier : undefined),
-  });
+  private readonly stream = sleeperStream();
   /** Bodies whose position changed since the last flush. */
   private readonly dirty = new Set<Sleeper>();
-  /** Bodies that are carried or seated: the tracking loop walks only these. */
-  private readonly moving = new Set<Sleeper>();
-  private readonly carriers = new Map<number, Sleeper>();
+  private readonly moving = new MovingBodies();
   private readonly writes = new WriteQueue((label, error) =>
     log.error(`database write failed (${label})`, error),
   );
@@ -39,16 +29,7 @@ class Sleepers {
     const purged = await repo.purgeOlderThan(content.settings.days);
     const now = Date.now();
     await repo.loadAll((row) => {
-      const s = new Sleeper(
-        row.char_id,
-        modelHash(row.model),
-        row.anim,
-        row.x,
-        row.y,
-        row.z,
-        row.heading,
-        now - Number(row.age) * 1000,
-      );
+      const s = sleeperFromRow(row, now);
       this.byId.set(s.charId, s);
     });
     this.loaded = true;
@@ -66,11 +47,11 @@ class Sleepers {
   }
 
   carriedBy(source: number): Sleeper | undefined {
-    return this.carriers.get(source);
+    return this.moving.carriedBy(source);
   }
 
   movingBodies(): ReadonlySet<Sleeper> {
-    return this.moving;
+    return this.moving.all();
   }
 
   /** Whether the body is in a cell this player watches (or the player carries it). */
@@ -102,7 +83,7 @@ class Sleepers {
     const s = this.byId.get(charId);
     if (!s) return;
     this.stream.delete(charId);
-    this.track(s, false);
+    this.moving.track(s, false);
     this.dirty.delete(s);
     this.byId.delete(charId);
     looks.forget(charId);
@@ -118,9 +99,9 @@ class Sleepers {
     next: Pick<Sleeper, "state" | "carrier" | "net" | "seat">,
     coords?: Coords,
   ): void {
-    this.track(s, false);
+    this.moving.track(s, false);
     Object.assign(s, next);
-    this.track(s, s.moving);
+    this.moving.track(s, s.moving);
     if (coords) this.setCoords(s, coords);
     this.place(s);
     // Put down (or dropped by a vanished carrier / vehicle): the owner spawns here next time.
@@ -205,15 +186,6 @@ class Sleepers {
   private place(s: Sleeper, resend = true): void {
     if (this.hidden(s)) this.stream.delete(s.charId);
     else this.stream.set(s, resend);
-  }
-
-  private track(s: Sleeper, on: boolean): void {
-    if (on) this.moving.add(s);
-    else this.moving.delete(s);
-    if (s.state !== "carried") return;
-    if (on) this.carriers.set(s.carrier, s);
-    else if (this.carriers.get(s.carrier) === s)
-      this.carriers.delete(s.carrier);
   }
 }
 
