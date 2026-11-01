@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.2...v0.1.3) (2026-11-01)
+
+
+### Code Refactoring
+
+* feature folders, side entries that only import, panel schema per tab ([0a214fa](https://github.com/aifivem/ai-exitsleeping/commit/0a214fa9b850da8d8b73de796647f1c3a5434b3a))
+
 ## [0.1.2](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.1...v0.1.2) (2026-10-31)
 
 

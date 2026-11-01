@@ -1,6 +1,6 @@
 name 'ai-exitsleeping'
 author 'TGIANN'
-version '0.1.2' -- x-release-please-version
+version '0.1.3' -- x-release-please-version
 license 'GPL-3.0-only'
 description 'Players who log out stay in the world as a sleeping ped at their last location; others can carry it or put it into a vehicle, and the owner wakes up where the ped ended up.'
 repository 'https://github.com/aifivem/ai-exitsleeping'
