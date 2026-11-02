@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.4...v0.1.5) (2026-11-02)
+
+
+### Documentation
+
+* install from the release zip ([d1ff38a](https://github.com/aifivem/ai-exitsleeping/commit/d1ff38ab1d93fce2b9d69076eb402d72adb3309a))
+
+
+### Miscellaneous Chores
+
+* build files are no longer in git, the release zip carries them ([9ffa91d](https://github.com/aifivem/ai-exitsleeping/commit/9ffa91d1b27d8d139977dd02294e75c470e0af4f))
+
 ## [0.1.4](https://github.com/aifivem/ai-exitsleeping/compare/v0.1.3...v0.1.4) (2026-11-02)
 
 
