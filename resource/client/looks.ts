@@ -1,9 +1,9 @@
-import { appearance, triggerServerCallback } from "@aicore-fivem/lib/client";
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { appearance, triggerServerCallback } from "@aifivem/lib/client";
+import { createLogger } from "@aifivem/lib/shared";
 import {
   toCharacterAppearance,
   type CharacterAppearance,
-} from "@aicore-fivem/shared";
+} from "@aifivem/shared";
 import { ResourceName } from "common";
 import { EVENTS, MAX_LOOKS } from "common/events";
 

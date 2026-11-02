@@ -4,8 +4,8 @@ import {
   Reasons,
   registerExport,
   stateBoolean,
-} from "@aicore-fivem/lib/client";
-import { PLAYER_BAGS } from "@aicore-fivem/shared";
+} from "@aifivem/lib/client";
+import { PLAYER_BAGS } from "@aifivem/shared";
 
 /**
  * Reasons other resources set through exports (the original script's `canRenderPeds` / `canCarry` hooks), kept per

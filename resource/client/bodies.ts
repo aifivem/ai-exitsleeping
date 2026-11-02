@@ -1,4 +1,4 @@
-import { onCache, onStop } from "@aicore-fivem/lib/client";
+import { onCache, onStop } from "@aifivem/lib/client";
 import type { SleeperView } from "common/events";
 import { attached } from "./attached";
 import { carry } from "./carry";

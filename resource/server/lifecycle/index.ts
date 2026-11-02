@@ -4,7 +4,7 @@ import {
   every,
   onCharacter,
   onStop,
-} from "@aicore-fivem/lib/server";
+} from "@aifivem/lib/server";
 import { Locale, ResourceName } from "common";
 import { content, core, log, panel } from "../content";
 import { createSleeping } from "../create";

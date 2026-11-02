@@ -2,9 +2,9 @@ import {
   registerExport,
   resourceExport,
   triggerServerCallback,
-} from "@aicore-fivem/lib/client";
-import { createLogger } from "@aicore-fivem/lib/shared";
-import { CORE } from "@aicore-fivem/shared";
+} from "@aifivem/lib/client";
+import { createLogger } from "@aifivem/lib/shared";
+import { CORE } from "@aifivem/shared";
 import { ResourceName } from "common";
 import { EVENTS } from "common/events";
 import { carry } from "./carry";

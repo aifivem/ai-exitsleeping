@@ -4,7 +4,7 @@ import {
   keyHints,
   onCache,
   player,
-} from "@aicore-fivem/lib/client";
+} from "@aifivem/lib/client";
 import { Locale } from "common";
 import { EVENTS, type SleeperView } from "common/events";
 import { content } from "./settings";

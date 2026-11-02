@@ -1,5 +1,5 @@
-import { AreaFollower, onServerEvent } from "@aicore-fivem/lib/client";
-import { readId } from "@aicore-fivem/lib/shared";
+import { AreaFollower, onServerEvent } from "@aifivem/lib/client";
+import { readId } from "@aifivem/lib/shared";
 import { CELL, EVENTS, toView, type SleeperView } from "common/events";
 import { looks } from "./looks";
 

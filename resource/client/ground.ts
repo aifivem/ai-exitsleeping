@@ -4,7 +4,7 @@ import {
   LocalPed,
   Points,
   requestAnimDict,
-} from "@aicore-fivem/lib/client";
+} from "@aifivem/lib/client";
 import { Locale } from "common";
 import { EVENTS, HOOKS, type SleeperView } from "common/events";
 import { carry } from "./carry";

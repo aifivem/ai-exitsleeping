@@ -1,4 +1,4 @@
-import type { TabSpec, WidgetSpec } from "@aicore-fivem/shared";
+import type { TabSpec, WidgetSpec } from "@aifivem/shared";
 import { SETTINGS_DEFAULTS } from "./defaults";
 
 const offset = (path: string, label: string, unit: string): WidgetSpec => ({

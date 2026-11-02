@@ -1,4 +1,4 @@
-import { isRecord, readFinite, readId } from "@aicore-fivem/lib/shared";
+import { isRecord, readFinite, readId } from "@aifivem/lib/shared";
 
 /** ai-exitsleeping's net contracts and the sleeper view clients get. No natives. */
 

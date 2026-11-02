@@ -1,5 +1,5 @@
-import { spec } from "@aicore-fivem/lib/shared";
-import type { DataSpec, FileSpec, TabSpec } from "@aicore-fivem/shared";
+import { spec } from "@aifivem/lib/shared";
+import type { DataSpec, FileSpec, TabSpec } from "@aifivem/shared";
 import { metres } from "./metres";
 import { SETTINGS_DEFAULTS } from "./defaults";
 

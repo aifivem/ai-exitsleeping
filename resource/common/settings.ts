@@ -1,4 +1,4 @@
-import { bool, int, num, record, str } from "@aicore-fivem/lib/shared";
+import { bool, int, num, record, str } from "@aifivem/lib/shared";
 
 /** The panel settings (`data/settings.json`, mirrored by every client) and their reader. No natives. */
 

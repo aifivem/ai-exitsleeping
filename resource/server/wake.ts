@@ -3,8 +3,8 @@ import {
   isOnline,
   onClientCallback,
   vehicleFromNet,
-} from "@aicore-fivem/lib/server";
-import { distance, waitFor } from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/server";
+import { distance, waitFor } from "@aifivem/lib/shared";
 import { EVENTS } from "common/events";
 import { core, debug, livePed, pedCoords } from "./content";
 import { sleepers } from "./store";

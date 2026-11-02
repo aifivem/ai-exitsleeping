@@ -1,5 +1,5 @@
-import { AdminWorld } from "@aicore-fivem/lib/client";
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { AdminWorld } from "@aifivem/lib/client";
+import { createLogger } from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { readSettings, type Settings } from "common/settings";
 

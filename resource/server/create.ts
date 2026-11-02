@@ -1,10 +1,10 @@
-import { ByResource, registerExport } from "@aicore-fivem/lib/server";
+import { ByResource, registerExport } from "@aifivem/lib/server";
 import { inAnyArea } from "common/areas";
 import { content, core, debug, livePed, log, pedCoords } from "./content";
 import { looks } from "./looks";
 import { Sleeper } from "./sleeper";
 import { sleepers } from "./store";
-import { randomInt } from "@aicore-fivem/lib/shared";
+import { randomInt } from "@aifivem/lib/shared";
 
 type CreateCheck = (
   source: number,

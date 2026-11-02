@@ -1,4 +1,4 @@
-import type { WidgetSpec } from "@aicore-fivem/shared";
+import type { WidgetSpec } from "@aifivem/shared";
 
 /** A distance field in metres (0.5 m steps). */
 export const metres = (

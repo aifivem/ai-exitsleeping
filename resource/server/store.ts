@@ -1,5 +1,5 @@
-import { characters, WriteQueue } from "@aicore-fivem/lib/server";
-import { waitFor } from "@aicore-fivem/lib/shared";
+import { characters, WriteQueue } from "@aifivem/lib/server";
+import { waitFor } from "@aifivem/lib/shared";
 import { inAnyArea } from "common/areas";
 import { HOOKS } from "common/events";
 import { content, debug, log } from "./content";

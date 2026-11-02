@@ -1,4 +1,4 @@
-import { cache, callAction, Points } from "@aicore-fivem/lib/client";
+import { cache, callAction, Points } from "@aifivem/lib/client";
 import { Locale } from "common";
 import { EVENTS } from "common/events";
 import { carry } from "./carry";
